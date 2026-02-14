@@ -104,6 +104,19 @@ body {
   color: #666;
 }
 
+.node-header .btn-copy {
+  background: #e8e8e8;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 1px 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #444;
+  line-height: 1.4;
+}
+
+.node-header .btn-copy:hover { background: #d0d0d0; }
+
 .node-board-canvas {
   display: block;
   margin: 0 auto 6px;
@@ -211,6 +224,19 @@ body {
     return node;
   }
 
+  function copyAsChild(parentNode) {
+    const child = createNode(parentNode.x + 60, parentNode.y + 250, parentNode.boardSize);
+    // Deep copy board
+    for (let r = 0; r < parentNode.boardSize; r++) {
+      for (let c = 0; c < parentNode.boardSize; c++) {
+        child.board[r][c] = parentNode.board[r][c];
+      }
+    }
+    drawBoard(child);
+    connectNodes(parentNode.id, child.id);
+    return child;
+  }
+
   function findNode(id) {
     return nodes.find(n => n.id === id);
   }
@@ -283,7 +309,13 @@ body {
     // Header
     const header = document.createElement('div');
     header.className = 'node-header';
-    header.innerHTML = `<span>Node ${node.id}</span><span>${node.boardSize}x${node.boardSize}</span>`;
+    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">CP</button><span>${node.boardSize}x${node.boardSize}</span>`;
+    const copyBtn = header.querySelector('.btn-copy');
+    copyBtn.addEventListener('mousedown', e => e.stopPropagation());
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      copyAsChild(node);
+    });
     card.appendChild(header);
 
     // Board canvas
