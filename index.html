@@ -342,6 +342,8 @@ body {
   let nextNodeId = 1;
   let selectedIds = [];
   let panX = 0, panY = 0;
+  let zoom = 1;
+  const ZOOM_MIN = 0.2, ZOOM_MAX = 3;
 
   const canvasArea = document.getElementById('canvas-area');
   const connCanvas = document.getElementById('connection-canvas');
@@ -370,7 +372,7 @@ body {
         parentId: n.parentId,
       })),
       nextNodeId,
-      panX, panY,
+      panX, panY, zoom,
     };
   }
 
@@ -384,7 +386,7 @@ body {
     nodes = [];
     nextNodeId = 1;
     selectedIds = [];
-    panX = 0; panY = 0;
+    panX = 0; panY = 0; zoom = 1;
     drawConnections();
   }
 
@@ -398,6 +400,7 @@ body {
     nextNodeId = d.nextNodeId || 1;
     panX = d.panX || 0;
     panY = d.panY || 0;
+    zoom = d.zoom || 1;
     // Recreate node objects (without DOM yet)
     const nodeMap = {};
     for (const nd of d.nodes) {
@@ -428,7 +431,7 @@ body {
     const tree = {
       id: nextTreeId++,
       title: title || 'Untitled',
-      data: { nodes: [], nextNodeId: 1, panX: 0, panY: 0 },
+      data: { nodes: [], nextNodeId: 1, panX: 0, panY: 0, zoom: 1 },
     };
     trees.push(tree);
     loadTree(tree.id);
@@ -660,8 +663,10 @@ body {
     const card = document.createElement('div');
     card.className = 'node-card';
     card.dataset.nodeId = node.id;
-    card.style.left = (node.x + panX) + 'px';
-    card.style.top = (node.y + panY) + 'px';
+    card.style.left = (node.x * zoom + panX) + 'px';
+    card.style.top = (node.y * zoom + panY) + 'px';
+    card.style.transform = 'scale(' + zoom + ')';
+    card.style.transformOrigin = '0 0';
 
     // Header
     const header = document.createElement('div');
@@ -814,8 +819,10 @@ body {
   function repositionAll() {
     for (const n of nodes) {
       if (n.el) {
-        n.el.style.left = (n.x + panX) + 'px';
-        n.el.style.top = (n.y + panY) + 'px';
+        n.el.style.left = (n.x * zoom + panX) + 'px';
+        n.el.style.top = (n.y * zoom + panY) + 'px';
+        n.el.style.transform = 'scale(' + zoom + ')';
+        n.el.style.transformOrigin = '0 0';
       }
     }
     drawConnections();
@@ -827,17 +834,17 @@ body {
     card.addEventListener('mousedown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
       dragging = true;
-      offX = e.clientX - (node.x + panX);
-      offY = e.clientY - (node.y + panY);
+      offX = e.clientX - (node.x * zoom + panX);
+      offY = e.clientY - (node.y * zoom + panY);
       card.style.zIndex = 20;
       e.preventDefault();
     });
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
-      node.x = e.clientX - offX - panX;
-      node.y = e.clientY - offY - panY;
-      card.style.left = (node.x + panX) + 'px';
-      card.style.top = (node.y + panY) + 'px';
+      node.x = (e.clientX - offX - panX) / zoom;
+      node.y = (e.clientY - offY - panY) / zoom;
+      card.style.left = (node.x * zoom + panX) + 'px';
+      card.style.top = (node.y * zoom + panY) + 'px';
       drawConnections();
     });
     window.addEventListener('mouseup', () => {
@@ -942,8 +949,8 @@ body {
   document.getElementById('btn-add').addEventListener('click', () => {
     const bs = parseInt(document.getElementById('board-size').value) || 9;
     const clamped = Math.max(3, Math.min(19, bs));
-    const viewCenterX = canvasArea.clientWidth / 2 - panX;
-    const viewCenterY = canvasArea.clientHeight / 2 - panY;
+    const viewCenterX = (canvasArea.clientWidth / 2 - panX) / zoom;
+    const viewCenterY = (canvasArea.clientHeight / 2 - panY) / zoom;
     const x = viewCenterX - 100 + Math.random() * 200;
     const y = viewCenterY - 80 + Math.random() * 160;
     createNode(x, y, clamped);
@@ -1032,6 +1039,27 @@ body {
       }
     });
   }
+
+  // =============================================
+  // Zoom (mouse wheel)
+  // =============================================
+  canvasArea.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const ar = canvasArea.getBoundingClientRect();
+    // Mouse position relative to canvas-area
+    const mx = e.clientX - ar.left;
+    const my = e.clientY - ar.top;
+    // World position under the cursor before zoom
+    const wx = (mx - panX) / zoom;
+    const wy = (my - panY) / zoom;
+    // Apply zoom
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+    // Adjust pan so that the world point under cursor stays fixed
+    panX = mx - wx * zoom;
+    panY = my - wy * zoom;
+    repositionAll();
+  }, { passive: false });
 
   // =============================================
   // Initialize with one default tree
