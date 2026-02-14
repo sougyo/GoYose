@@ -771,8 +771,11 @@ body {
     // Board click
     bc.addEventListener('click', (e) => {
       const rect = bc.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      // Derive actual scale from rendered size vs canvas intrinsic size
+      const scaleX = bc.width / rect.width;
+      const scaleY = bc.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
       const col = Math.round((mx - padding) / cellSize);
       const row = Math.round((my - padding) / cellSize);
       if (col >= 0 && col < node.boardSize && row >= 0 && row < node.boardSize) {
