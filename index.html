@@ -972,6 +972,31 @@ body {
       connCtx.lineTo(cx - arrLen * Math.cos(angle + 0.4), cy - arrLen * Math.sin(angle + 0.4));
       connCtx.closePath();
       connCtx.fill();
+
+      // Draw move value label on edge
+      if (parent.score !== null && node.score !== null) {
+        const value = Math.abs(parent.score - node.score);
+        const label = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+        const midX = (px + cx) / 2;
+        const midY = (py + cy) / 2;
+        const fontSize = Math.max(11, Math.min(16, 14 * zoom));
+        connCtx.font = 'bold ' + fontSize + 'px sans-serif';
+        const textW = connCtx.measureText(label).width;
+        const padH = 4, padV = 2;
+        connCtx.fillStyle = 'rgba(255,255,255,0.85)';
+        connCtx.fillRect(midX - textW / 2 - padH, midY - fontSize / 2 - padV, textW + padH * 2, fontSize + padV * 2);
+        connCtx.strokeStyle = '#c8a030';
+        connCtx.lineWidth = 1;
+        connCtx.strokeRect(midX - textW / 2 - padH, midY - fontSize / 2 - padV, textW + padH * 2, fontSize + padV * 2);
+        connCtx.fillStyle = '#b8860b';
+        connCtx.textAlign = 'center';
+        connCtx.textBaseline = 'middle';
+        connCtx.fillText(label, midX, midY);
+        // Reset styles for next iteration
+        connCtx.strokeStyle = '#555';
+        connCtx.lineWidth = 2;
+        connCtx.fillStyle = '#555';
+      }
     }
   }
 
@@ -1006,6 +1031,7 @@ body {
       }
       updateNodeScoreUI(node);
     }
+    drawConnections();
   }
 
   // =============================================
