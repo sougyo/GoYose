@@ -28,7 +28,7 @@ body {
   overflow: hidden;
   height: 100vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 #toolbar {
@@ -77,9 +77,10 @@ body {
   background: #666;
 }
 
-#main-container {
+#right-panel {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -297,27 +298,27 @@ body {
 </head>
 <body>
 
-<div id="toolbar">
-  <button id="btn-add">+ ノード追加</button>
-  <label>盤サイズ: <input type="number" id="board-size" value="9" min="3" max="19"></label>
-  <div class="separator"></div>
-  <button id="btn-connect">接続 (2ノード選択)</button>
-  <button id="btn-delete">削除</button>
-  <div class="separator"></div>
-  <button id="btn-calc">計算</button>
+<div id="sidebar">
+  <div id="sidebar-header">
+    <span>ツリー一覧</span>
+    <button id="btn-new-tree">+ 新規</button>
+  </div>
+  <ul id="tree-list"></ul>
+  <div id="sidebar-footer">
+    <button id="btn-export">エクスポート</button>
+    <button id="btn-import">インポート</button>
+  </div>
 </div>
 
-<div id="main-container">
-  <div id="sidebar">
-    <div id="sidebar-header">
-      <span>ツリー一覧</span>
-      <button id="btn-new-tree">+ 新規</button>
-    </div>
-    <ul id="tree-list"></ul>
-    <div id="sidebar-footer">
-      <button id="btn-export">エクスポート</button>
-      <button id="btn-import">インポート</button>
-    </div>
+<div id="right-panel">
+  <div id="toolbar">
+    <button id="btn-add">+ ノード追加</button>
+    <label>盤サイズ: <input type="number" id="board-size" value="9" min="3" max="19"></label>
+    <div class="separator"></div>
+    <button id="btn-connect">接続 (2ノード選択)</button>
+    <button id="btn-delete">削除</button>
+    <div class="separator"></div>
+    <button id="btn-calc">計算</button>
   </div>
   <div id="canvas-area">
     <canvas id="connection-canvas"></canvas>
