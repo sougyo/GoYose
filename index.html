@@ -746,7 +746,7 @@ body {
     // Header
     const header = document.createElement('div');
     header.className = 'node-header';
-    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">CP</button><span>${node.boardSize}x${node.boardSize}</span><button class="btn-delete-node" title="ノードを削除">\u00d7</button>`;
+    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">複製</button><span>${node.boardSize}x${node.boardSize}</span><button class="btn-delete-node" title="ノードを削除">\u00d7</button>`;
     const copyBtn = header.querySelector('.btn-copy');
     copyBtn.addEventListener('mousedown', e => e.stopPropagation());
     copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyAsChild(node); });
