@@ -65,7 +65,10 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  cursor: grab;
 }
+
+#canvas-area.panning { cursor: grabbing; }
 
 #connection-canvas {
   position: absolute;
@@ -172,6 +175,7 @@ body {
   let nodes = [];
   let nextId = 1;
   let selectedIds = [];
+  let panX = 0, panY = 0; // viewport offset
   const canvasArea = document.getElementById('canvas-area');
   const connCanvas = document.getElementById('connection-canvas');
   const connCtx = connCanvas.getContext('2d');
@@ -273,8 +277,8 @@ body {
     const card = document.createElement('div');
     card.className = 'node-card';
     card.dataset.nodeId = node.id;
-    card.style.left = node.x + 'px';
-    card.style.top = node.y + 'px';
+    card.style.left = (node.x + panX) + 'px';
+    card.style.top = (node.y + panY) + 'px';
 
     // Header
     const header = document.createElement('div');
@@ -426,6 +430,17 @@ body {
     return pts;
   }
 
+  // --- Reposition all node elements according to pan offset ---
+  function repositionAll() {
+    for (const n of nodes) {
+      if (n.el) {
+        n.el.style.left = (n.x + panX) + 'px';
+        n.el.style.top = (n.y + panY) + 'px';
+      }
+    }
+    drawConnections();
+  }
+
   // --- Drag ---
   function setupDrag(card, node) {
     let dragging = false;
@@ -433,17 +448,17 @@ body {
     card.addEventListener('mousedown', (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
       dragging = true;
-      offX = e.clientX - node.x;
-      offY = e.clientY - node.y;
+      offX = e.clientX - (node.x + panX);
+      offY = e.clientY - (node.y + panY);
       card.style.zIndex = 20;
       e.preventDefault();
     });
     window.addEventListener('mousemove', (e) => {
       if (!dragging) return;
-      node.x = e.clientX - offX;
-      node.y = e.clientY - offY;
-      card.style.left = node.x + 'px';
-      card.style.top = node.y + 'px';
+      node.x = e.clientX - offX - panX;
+      node.y = e.clientY - offY - panY;
+      card.style.left = (node.x + panX) + 'px';
+      card.style.top = (node.y + panY) + 'px';
       drawConnections();
     });
     window.addEventListener('mouseup', () => {
@@ -555,8 +570,10 @@ body {
   document.getElementById('btn-add').addEventListener('click', () => {
     const bs = parseInt(document.getElementById('board-size').value) || 9;
     const clamped = Math.max(3, Math.min(19, bs));
-    const x = 100 + Math.random() * 300;
-    const y = 80 + Math.random() * 200;
+    const viewCenterX = canvasArea.clientWidth / 2 - panX;
+    const viewCenterY = canvasArea.clientHeight / 2 - panY;
+    const x = viewCenterX - 100 + Math.random() * 200;
+    const y = viewCenterY - 80 + Math.random() * 160;
     createNode(x, y, clamped);
   });
 
@@ -581,13 +598,45 @@ body {
 
   document.getElementById('btn-calc').addEventListener('click', calculate);
 
-  // Click on empty area to deselect
-  canvasArea.addEventListener('mousedown', (e) => {
-    if (e.target === canvasArea || e.target === connCanvas) {
-      selectedIds = [];
-      updateSelectionUI();
-    }
-  });
+  // --- Pan (background drag) + deselect ---
+  {
+    let panning = false;
+    let panStartX, panStartY, panStartPanX, panStartPanY;
+    let moved = false;
+
+    canvasArea.addEventListener('mousedown', (e) => {
+      if (e.target !== canvasArea && e.target !== connCanvas) return;
+      panning = true;
+      moved = false;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      panStartPanX = panX;
+      panStartPanY = panY;
+      canvasArea.classList.add('panning');
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      const dx = e.clientX - panStartX;
+      const dy = e.clientY - panStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      panX = panStartPanX + dx;
+      panY = panStartPanY + dy;
+      repositionAll();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!panning) return;
+      panning = false;
+      canvasArea.classList.remove('panning');
+      if (!moved) {
+        // Click without drag = deselect
+        selectedIds = [];
+        updateSelectionUI();
+      }
+    });
+  }
 })();
 </script>
 </body>
