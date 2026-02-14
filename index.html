@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>囲碁ヨセ研究</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f0f0f0;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#toolbar {
+  background: #333;
+  color: #fff;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+#toolbar button {
+  background: #555;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+#toolbar button:hover { background: #777; }
+#toolbar button.active { background: #e8a735; color: #333; }
+
+#toolbar label {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#toolbar input[type="number"] {
+  width: 50px;
+  padding: 4px;
+  border: none;
+  border-radius: 3px;
+  text-align: center;
+}
+
+#toolbar .separator {
+  width: 1px;
+  height: 24px;
+  background: #666;
+}
+
+#canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+#connection-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.node-card {
+  position: absolute;
+  background: #fff;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: grab;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  user-select: none;
+  min-width: 80px;
+}
+
+.node-card:active { cursor: grabbing; }
+.node-card.selected { border-color: #e8a735; box-shadow: 0 0 0 3px rgba(232,167,53,0.3); }
+
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.node-board-canvas {
+  display: block;
+  margin: 0 auto 6px;
+  cursor: crosshair;
+  border-radius: 2px;
+}
+
+.node-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.node-score label { color: #666; }
+
+.node-score input {
+  width: 60px;
+  padding: 3px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.node-score .computed {
+  font-weight: bold;
+  color: #2a7d2a;
+  font-size: 15px;
+}
+
+#instructions {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button id="btn-add">+ ノード追加</button>
+  <label>盤サイズ: <input type="number" id="board-size" value="9" min="3" max="19"></label>
+  <div class="separator"></div>
+  <button id="btn-connect">接続 (2ノード選択)</button>
+  <button id="btn-delete">削除</button>
+  <div class="separator"></div>
+  <button id="btn-calc">計算</button>
+</div>
+
+<div id="canvas-area">
+  <canvas id="connection-canvas"></canvas>
+  <div id="instructions">ノードを追加して木構造を構築 → 葉ノードに目数を入力 → 計算ボタンで伝播</div>
+</div>
+
+<script>
+(function() {
+  // --- State ---
+  let nodes = [];
+  let nextId = 1;
+  let selectedIds = [];
+  const canvasArea = document.getElementById('canvas-area');
+  const connCanvas = document.getElementById('connection-canvas');
+  const connCtx = connCanvas.getContext('2d');
+
+  // --- Resize connection canvas ---
+  function resizeConnCanvas() {
+    connCanvas.width = canvasArea.clientWidth;
+    connCanvas.height = canvasArea.clientHeight;
+    drawConnections();
+  }
+  window.addEventListener('resize', resizeConnCanvas);
+  requestAnimationFrame(resizeConnCanvas);
+
+  // --- Node CRUD ---
+  function createNode(x, y, boardSize) {
+    const board = [];
+    for (let r = 0; r < boardSize; r++) {
+      board.push(new Array(boardSize).fill(0));
+    }
+    const node = {
+      id: nextId++,
+      x, y,
+      boardSize,
+      board,
+      score: null,
+      childIds: [],
+      parentId: null,
+      el: null,
+      boardCanvas: null,
+    };
+    nodes.push(node);
+    renderNode(node);
+    return node;
+  }
+
+  function findNode(id) {
+    return nodes.find(n => n.id === id);
+  }
+
+  function removeNode(id) {
+    const node = findNode(id);
+    if (!node) return;
+    // Disconnect from parent
+    if (node.parentId !== null) {
+      const parent = findNode(node.parentId);
+      if (parent) parent.childIds = parent.childIds.filter(c => c !== id);
+    }
+    // Disconnect children
+    for (const cid of node.childIds) {
+      const child = findNode(cid);
+      if (child) child.parentId = null;
+    }
+    if (node.el) node.el.remove();
+    nodes = nodes.filter(n => n.id !== id);
+    selectedIds = selectedIds.filter(s => s !== id);
+    drawConnections();
+  }
+
+  function connectNodes(parentId, childId) {
+    if (parentId === childId) return;
+    const parent = findNode(parentId);
+    const child = findNode(childId);
+    if (!parent || !child) return;
+    // Prevent cycles: child must not be ancestor of parent
+    if (isAncestor(childId, parentId)) return;
+    // If child already has a parent, disconnect
+    if (child.parentId !== null) {
+      const oldParent = findNode(child.parentId);
+      if (oldParent) oldParent.childIds = oldParent.childIds.filter(c => c !== childId);
+    }
+    child.parentId = parentId;
+    if (!parent.childIds.includes(childId)) parent.childIds.push(childId);
+    updateNodeScoreUI(parent);
+    updateNodeScoreUI(child);
+    drawConnections();
+  }
+
+  function disconnectChild(parentId, childId) {
+    const parent = findNode(parentId);
+    const child = findNode(childId);
+    if (parent) parent.childIds = parent.childIds.filter(c => c !== childId);
+    if (child) child.parentId = null;
+    updateNodeScoreUI(parent);
+    updateNodeScoreUI(child);
+    drawConnections();
+  }
+
+  function isAncestor(ancestorId, nodeId) {
+    let cur = findNode(nodeId);
+    while (cur) {
+      if (cur.id === ancestorId) return true;
+      cur = cur.parentId !== null ? findNode(cur.parentId) : null;
+    }
+    return false;
+  }
+
+  // --- Render Node DOM ---
+  function renderNode(node) {
+    const card = document.createElement('div');
+    card.className = 'node-card';
+    card.dataset.nodeId = node.id;
+    card.style.left = node.x + 'px';
+    card.style.top = node.y + 'px';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'node-header';
+    header.innerHTML = `<span>Node ${node.id}</span><span>${node.boardSize}x${node.boardSize}</span>`;
+    card.appendChild(header);
+
+    // Board canvas
+    const cellSize = node.boardSize <= 9 ? 24 : (node.boardSize <= 13 ? 18 : 14);
+    const padding = cellSize;
+    const canvasSize = cellSize * (node.boardSize - 1) + padding * 2;
+    const bc = document.createElement('canvas');
+    bc.className = 'node-board-canvas';
+    bc.width = canvasSize;
+    bc.height = canvasSize;
+    card.appendChild(bc);
+    node.boardCanvas = bc;
+
+    // Score area
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'node-score';
+    const isLeaf = node.childIds.length === 0;
+    if (isLeaf) {
+      scoreDiv.innerHTML = `<label>目数:</label><input type="number" step="0.5" class="score-input" value="">`;
+      const inp = scoreDiv.querySelector('input');
+      inp.addEventListener('change', () => {
+        node.score = inp.value !== '' ? parseFloat(inp.value) : null;
+      });
+      inp.addEventListener('mousedown', e => e.stopPropagation());
+      inp.addEventListener('click', e => e.stopPropagation());
+    } else {
+      scoreDiv.innerHTML = `<label>目数:</label><span class="computed">${node.score !== null ? node.score.toFixed(2) : '—'}</span>`;
+    }
+    card.appendChild(scoreDiv);
+    node.el = card;
+
+    // Board click
+    bc.addEventListener('click', (e) => {
+      const rect = bc.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const col = Math.round((mx - padding) / cellSize);
+      const row = Math.round((my - padding) / cellSize);
+      if (col >= 0 && col < node.boardSize && row >= 0 && row < node.boardSize) {
+        node.board[row][col] = (node.board[row][col] + 1) % 3;
+        drawBoard(node);
+      }
+    });
+
+    // Selection
+    card.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      handleSelect(node.id, e);
+    });
+
+    // Drag
+    setupDrag(card, node);
+
+    canvasArea.appendChild(card);
+    drawBoard(node);
+  }
+
+  function updateNodeScoreUI(node) {
+    if (!node || !node.el) return;
+    const scoreDiv = node.el.querySelector('.node-score');
+    const isLeaf = node.childIds.length === 0;
+    if (isLeaf) {
+      if (!scoreDiv.querySelector('input')) {
+        scoreDiv.innerHTML = `<label>目数:</label><input type="number" step="0.5" class="score-input" value="${node.score !== null ? node.score : ''}">`;
+        const inp = scoreDiv.querySelector('input');
+        inp.addEventListener('change', () => {
+          node.score = inp.value !== '' ? parseFloat(inp.value) : null;
+        });
+        inp.addEventListener('mousedown', e => e.stopPropagation());
+        inp.addEventListener('click', e => e.stopPropagation());
+      }
+    } else {
+      scoreDiv.innerHTML = `<label>目数:</label><span class="computed">${node.score !== null ? node.score.toFixed(2) : '—'}</span>`;
+    }
+  }
+
+  // --- Draw Board ---
+  function drawBoard(node) {
+    const bc = node.boardCanvas;
+    const ctx = bc.getContext('2d');
+    const bs = node.boardSize;
+    const cellSize = bs <= 9 ? 24 : (bs <= 13 ? 18 : 14);
+    const padding = cellSize;
+
+    // Background
+    ctx.fillStyle = '#e8c36a';
+    ctx.fillRect(0, 0, bc.width, bc.height);
+
+    // Grid lines
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < bs; i++) {
+      const p = padding + i * cellSize;
+      ctx.beginPath();
+      ctx.moveTo(padding, p);
+      ctx.lineTo(padding + (bs - 1) * cellSize, p);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p, padding);
+      ctx.lineTo(p, padding + (bs - 1) * cellSize);
+      ctx.stroke();
+    }
+
+    // Star points
+    const starPoints = getStarPoints(bs);
+    for (const [sr, sc] of starPoints) {
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(padding + sc * cellSize, padding + sr * cellSize, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Stones
+    const stoneR = cellSize * 0.42;
+    for (let r = 0; r < bs; r++) {
+      for (let c = 0; c < bs; c++) {
+        const v = node.board[r][c];
+        if (v === 0) continue;
+        const cx = padding + c * cellSize;
+        const cy = padding + r * cellSize;
+        ctx.beginPath();
+        ctx.arc(cx, cy, stoneR, 0, Math.PI * 2);
+        ctx.fillStyle = v === 1 ? '#111' : '#eee';
+        ctx.fill();
+        ctx.strokeStyle = v === 1 ? '#000' : '#aaa';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function getStarPoints(size) {
+    if (size < 7) return [];
+    const pts = [];
+    const edge = size <= 9 ? 2 : 3;
+    const mid = Math.floor(size / 2);
+    const positions = [edge, size - 1 - edge];
+    if (size % 2 === 1) positions.splice(1, 0, mid);
+    for (const r of positions) {
+      for (const c of positions) {
+        pts.push([r, c]);
+      }
+    }
+    return pts;
+  }
+
+  // --- Drag ---
+  function setupDrag(card, node) {
+    let dragging = false;
+    let offX, offY;
+    card.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
+      dragging = true;
+      offX = e.clientX - node.x;
+      offY = e.clientY - node.y;
+      card.style.zIndex = 20;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      node.x = e.clientX - offX;
+      node.y = e.clientY - offY;
+      card.style.left = node.x + 'px';
+      card.style.top = node.y + 'px';
+      drawConnections();
+    });
+    window.addEventListener('mouseup', () => {
+      if (dragging) {
+        dragging = false;
+        card.style.zIndex = 10;
+      }
+    });
+  }
+
+  // --- Selection ---
+  function handleSelect(id, e) {
+    if (e && e.target.tagName === 'CANVAS') return;
+    const idx = selectedIds.indexOf(id);
+    if (e && e.ctrlKey) {
+      if (idx >= 0) selectedIds.splice(idx, 1);
+      else selectedIds.push(id);
+    } else {
+      if (idx >= 0 && selectedIds.length === 1) {
+        selectedIds = [];
+      } else {
+        selectedIds = [id];
+      }
+    }
+    updateSelectionUI();
+  }
+
+  function updateSelectionUI() {
+    for (const n of nodes) {
+      if (n.el) n.el.classList.toggle('selected', selectedIds.includes(n.id));
+    }
+  }
+
+  // --- Draw Connections ---
+  function drawConnections() {
+    connCtx.clearRect(0, 0, connCanvas.width, connCanvas.height);
+    connCtx.strokeStyle = '#555';
+    connCtx.lineWidth = 2;
+    connCtx.fillStyle = '#555';
+
+    for (const node of nodes) {
+      if (node.parentId === null) continue;
+      const parent = findNode(node.parentId);
+      if (!parent || !parent.el || !node.el) continue;
+
+      const pr = parent.el.getBoundingClientRect();
+      const cr = node.el.getBoundingClientRect();
+      const ar = canvasArea.getBoundingClientRect();
+
+      const px = pr.left + pr.width / 2 - ar.left;
+      const py = pr.top + pr.height - ar.top;
+      const cx = cr.left + cr.width / 2 - ar.left;
+      const cy = cr.top - ar.top;
+
+      // Line
+      connCtx.beginPath();
+      connCtx.moveTo(px, py);
+      connCtx.lineTo(cx, cy);
+      connCtx.stroke();
+
+      // Arrowhead
+      const angle = Math.atan2(cy - py, cx - px);
+      const arrLen = 10;
+      connCtx.beginPath();
+      connCtx.moveTo(cx, cy);
+      connCtx.lineTo(cx - arrLen * Math.cos(angle - 0.4), cy - arrLen * Math.sin(angle - 0.4));
+      connCtx.lineTo(cx - arrLen * Math.cos(angle + 0.4), cy - arrLen * Math.sin(angle + 0.4));
+      connCtx.closePath();
+      connCtx.fill();
+    }
+  }
+
+  // --- Calculation ---
+  function calculate() {
+    // Topological sort (leaves first)
+    const visited = new Set();
+    const order = [];
+    function dfs(id) {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const node = findNode(id);
+      if (!node) return;
+      for (const cid of node.childIds) dfs(cid);
+      order.push(id);
+    }
+    for (const n of nodes) dfs(n.id);
+
+    for (const id of order) {
+      const node = findNode(id);
+      if (!node) continue;
+      if (node.childIds.length === 0) {
+        // Leaf: keep user-provided score
+        continue;
+      }
+      const childScores = node.childIds.map(cid => {
+        const c = findNode(cid);
+        return c ? c.score : null;
+      }).filter(s => s !== null);
+      if (childScores.length > 0) {
+        node.score = childScores.reduce((a, b) => a + b, 0) / childScores.length;
+      } else {
+        node.score = null;
+      }
+      updateNodeScoreUI(node);
+    }
+  }
+
+  // --- Toolbar handlers ---
+  document.getElementById('btn-add').addEventListener('click', () => {
+    const bs = parseInt(document.getElementById('board-size').value) || 9;
+    const clamped = Math.max(3, Math.min(19, bs));
+    const x = 100 + Math.random() * 300;
+    const y = 80 + Math.random() * 200;
+    createNode(x, y, clamped);
+  });
+
+  document.getElementById('btn-connect').addEventListener('click', () => {
+    if (selectedIds.length !== 2) {
+      alert('接続するには2つのノードを選択してください (Ctrl+クリック)');
+      return;
+    }
+    connectNodes(selectedIds[0], selectedIds[1]);
+    selectedIds = [];
+    updateSelectionUI();
+  });
+
+  document.getElementById('btn-delete').addEventListener('click', () => {
+    if (selectedIds.length === 0) {
+      alert('削除するノードを選択してください');
+      return;
+    }
+    for (const id of [...selectedIds]) removeNode(id);
+    drawConnections();
+  });
+
+  document.getElementById('btn-calc').addEventListener('click', calculate);
+
+  // Click on empty area to deselect
+  canvasArea.addEventListener('mousedown', (e) => {
+    if (e.target === canvasArea || e.target === connCanvas) {
+      selectedIds = [];
+      updateSelectionUI();
+    }
+  });
+})();
+</script>
+</body>
+</html>
