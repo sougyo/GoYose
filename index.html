@@ -248,6 +248,19 @@ body {
 
 .node-header .btn-copy:hover { background: #d0d0d0; }
 
+.node-header .btn-delete-node {
+  background: #e8e8e8;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 1px 5px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #999;
+  line-height: 1.4;
+}
+
+.node-header .btn-delete-node:hover { background: #f0c0c0; color: #c33; border-color: #c33; }
+
 .node-board-canvas {
   display: block;
   margin: 0 auto 6px;
@@ -733,10 +746,13 @@ body {
     // Header
     const header = document.createElement('div');
     header.className = 'node-header';
-    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">CP</button><span>${node.boardSize}x${node.boardSize}</span>`;
+    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">CP</button><span>${node.boardSize}x${node.boardSize}</span><button class="btn-delete-node" title="ノードを削除">\u00d7</button>`;
     const copyBtn = header.querySelector('.btn-copy');
     copyBtn.addEventListener('mousedown', e => e.stopPropagation());
     copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyAsChild(node); });
+    const delNodeBtn = header.querySelector('.btn-delete-node');
+    delNodeBtn.addEventListener('mousedown', e => e.stopPropagation());
+    delNodeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeNode(node.id); drawConnections(); });
     card.appendChild(header);
 
     // Board canvas
@@ -1067,6 +1083,16 @@ body {
   });
 
   document.getElementById('btn-calc').addEventListener('click', calculate);
+
+  // --- Delete key to remove selected nodes ---
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && selectedIds.length > 0) {
+      // Don't delete if user is typing in an input
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      for (const id of [...selectedIds]) removeNode(id);
+      drawConnections();
+    }
+  });
 
   // =============================================
   // Sidebar handlers
