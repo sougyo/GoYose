@@ -53,6 +53,14 @@ body {
   font-size: 14px;
 }
 
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(72, 199, 96, 0.3); }
+  50%      { box-shadow: 0 0 18px 6px rgba(72, 199, 96, 0.7); }
+}
+#btn-add.glow-hint {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
 #toolbar button:hover { background: #777; }
 #toolbar button.active { background: #e8a735; color: #333; }
 
@@ -1051,9 +1059,24 @@ body {
   }
 
   // =============================================
+  // Initial glow hint on "ノード追加" button
+  // =============================================
+  const btnAdd = document.getElementById('btn-add');
+  btnAdd.classList.add('glow-hint');
+  function stopGlowHint() {
+    btnAdd.classList.remove('glow-hint');
+  }
+  document.addEventListener('click', function onBtn(e) {
+    if (e.target.closest('button')) {
+      stopGlowHint();
+      document.removeEventListener('click', onBtn);
+    }
+  });
+
+  // =============================================
   // Toolbar handlers
   // =============================================
-  document.getElementById('btn-add').addEventListener('click', () => {
+  btnAdd.addEventListener('click', () => {
     const bs = parseInt(document.getElementById('board-size').value) || 9;
     const clamped = Math.max(3, Math.min(19, bs));
     const viewCenterX = (canvasArea.clientWidth / 2 - panX) / zoom;
