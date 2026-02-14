@@ -1,8 +1,6 @@
 # GoYose - 囲碁ヨセ研究ツール
 
-囲碁の終盤（ヨセ）における着手の価値を、木構造を使って逆算で計算する Web アプリケーションです。以下からアクセスしてください。
-
-https://sougyo.github.io/GoYose/
+囲碁の終盤（ヨセ）における着手の価値を、木構造を使って逆算で計算する Web アプリケーションです。
 
 ## 概要
 
@@ -10,7 +8,9 @@ https://sougyo.github.io/GoYose/
 
 ## 使い方
 
-`index.html` をブラウザで開くだけで動作します。サーバやビルドツールは不要です。
+https://sougyo.github.io/GoYose/ にアクセスしてください。
+
+<img src="doc/sample.gif" alt="sample">
 
 ### ツリー管理
 
