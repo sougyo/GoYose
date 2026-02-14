@@ -137,6 +137,9 @@ body {
 
 #tree-list li:hover { background: #3a3a3a; }
 #tree-list li.active { background: #4a4a2a; color: #fff; }
+#tree-list li.drag-over-above { border-top: 2px solid #e8a735; }
+#tree-list li.drag-over-below { border-bottom: 2px solid #e8a735; }
+#tree-list li.dragging { opacity: 0.4; }
 
 #tree-list li .tree-title-text {
   flex: 1;
@@ -448,11 +451,17 @@ body {
     }
   }
 
+  let dragSrcTreeId = null;
+
   function renderTreeList() {
     treeListEl.innerHTML = '';
     for (const tree of trees) {
       const li = document.createElement('li');
+      li.dataset.treeId = tree.id;
       if (tree.id === activeTreeId) li.classList.add('active');
+
+      // Make draggable
+      li.draggable = true;
 
       // Title display
       const titleSpan = document.createElement('span');
@@ -486,7 +495,60 @@ body {
         deleteTree(tree.id);
       });
 
+      // --- Drag & Drop ---
+      li.addEventListener('dragstart', (e) => {
+        dragSrcTreeId = tree.id;
+        li.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      li.addEventListener('dragend', () => {
+        dragSrcTreeId = null;
+        li.classList.remove('dragging');
+        clearDropIndicators();
+      });
+
+      li.addEventListener('dragover', (e) => {
+        if (dragSrcTreeId === null || dragSrcTreeId === tree.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        clearDropIndicators();
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          li.classList.add('drag-over-above');
+        } else {
+          li.classList.add('drag-over-below');
+        }
+      });
+
+      li.addEventListener('dragleave', () => {
+        li.classList.remove('drag-over-above', 'drag-over-below');
+      });
+
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (dragSrcTreeId === null || dragSrcTreeId === tree.id) return;
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const insertBefore = e.clientY < midY;
+        // Reorder trees array
+        const srcIdx = trees.findIndex(t => t.id === dragSrcTreeId);
+        const srcTree = trees.splice(srcIdx, 1)[0];
+        let destIdx = trees.findIndex(t => t.id === tree.id);
+        if (!insertBefore) destIdx++;
+        trees.splice(destIdx, 0, srcTree);
+        dragSrcTreeId = null;
+        renderTreeList();
+      });
+
       treeListEl.appendChild(li);
+    }
+  }
+
+  function clearDropIndicators() {
+    for (const el of treeListEl.querySelectorAll('.drag-over-above, .drag-over-below')) {
+      el.classList.remove('drag-over-above', 'drag-over-below');
     }
   }
 
