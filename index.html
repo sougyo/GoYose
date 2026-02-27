@@ -102,6 +102,8 @@ body {
   flex-shrink: 0;
   z-index: 90;
   border-right: 1px solid #444;
+  transition: width 0.2s ease;
+  overflow: hidden;
 }
 
 #sidebar-header {
@@ -126,6 +128,22 @@ body {
 }
 
 #sidebar-header button:hover { background: #777; }
+
+#sidebar.collapsed { width: 40px; }
+#sidebar.collapsed #sidebar-header { padding: 6px 6px; justify-content: center; }
+#sidebar.collapsed .sidebar-title,
+#sidebar.collapsed #btn-new-tree,
+#sidebar.collapsed #tree-list,
+#sidebar.collapsed #sidebar-footer { display: none; }
+
+#sidebar-header #btn-sidebar-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
 
 #tree-list {
   flex: 1;
@@ -250,7 +268,7 @@ body {
   background: #e8e8e8;
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 1px 6px;
+  padding: 4px 8px;
   cursor: pointer;
   font-size: 11px;
   color: #444;
@@ -263,7 +281,7 @@ body {
   background: #e8e8e8;
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 1px 5px;
+  padding: 4px 7px;
   cursor: pointer;
   font-size: 11px;
   color: #999;
@@ -351,7 +369,8 @@ body {
 
 <div id="sidebar">
   <div id="sidebar-header">
-    <span>ツリー一覧</span>
+    <button id="btn-sidebar-toggle" title="折りたたむ">◀</button>
+    <span class="sidebar-title">ツリー一覧</span>
     <button id="btn-new-tree">+ 新規</button>
   </div>
   <ul id="tree-list"></ul>
@@ -1013,7 +1032,7 @@ body {
     // --- Touch drag + tap-to-select ---
     let touchStartCX, touchStartCY, touchHasMoved = false;
     card.addEventListener('touchstart', (e) => {
-      if (e.touches.length !== 1 || e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
+      if (e.touches.length !== 1 || e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS' || e.target.tagName === 'BUTTON') return;
       const t = e.touches[0];
       dragging = true;
       touchHasMoved = false;
@@ -1369,6 +1388,26 @@ body {
       alert('Autosaveに失敗しました。無効化されました。\n' + err.message);
     }
   }
+
+  // =============================================
+  // Sidebar toggle
+  // =============================================
+  const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+  const sidebarEl = document.getElementById('sidebar');
+
+  // Auto-collapse on small screens
+  if (window.innerWidth < 640) {
+    sidebarEl.classList.add('collapsed');
+    btnSidebarToggle.textContent = '▶';
+  }
+
+  btnSidebarToggle.addEventListener('click', () => {
+    const collapsed = sidebarEl.classList.toggle('collapsed');
+    btnSidebarToggle.textContent = collapsed ? '▶' : '◀';
+  });
+
+  // Resize connection canvas after sidebar transition completes
+  sidebarEl.addEventListener('transitionend', resizeConnCanvas);
 
   // =============================================
   // Pan (background drag) + deselect
