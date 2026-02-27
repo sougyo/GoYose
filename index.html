@@ -183,8 +183,11 @@ body {
   padding: 8px 10px;
   border-top: 1px solid #444;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
+
+#btn-autosave { width: 100%; }
 
 #sidebar-footer button {
   flex: 1;
@@ -318,6 +321,26 @@ body {
 
 /* Hidden file input */
 #import-input { display: none; }
+
+/* Drop overlay */
+#drop-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 22px;
+  font-weight: bold;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+  border: 4px dashed #e8a735;
+}
+#drop-overlay.active { display: flex; }
+#drop-overlay .drop-icon { font-size: 52px; }
 </style>
 </head>
 <body>
@@ -331,6 +354,7 @@ body {
   <div id="sidebar-footer">
     <button id="btn-export">エクスポート</button>
     <button id="btn-import">インポート</button>
+    <button id="btn-autosave">Autosave</button>
   </div>
 </div>
 
@@ -1138,6 +1162,129 @@ body {
       importInput.value = '';
     }
   });
+
+  // =============================================
+  // Drag & Drop Import (window-wide)
+  // =============================================
+  const dropOverlay = document.createElement('div');
+  dropOverlay.id = 'drop-overlay';
+  dropOverlay.innerHTML = '<span class="drop-icon">📂</span>JSONファイルをドロップしてインポート';
+  document.body.appendChild(dropOverlay);
+
+  let dragEnterCount = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragEnterCount++;
+    dropOverlay.classList.add('active');
+  });
+
+  window.addEventListener('dragleave', () => {
+    dragEnterCount--;
+    if (dragEnterCount <= 0) {
+      dragEnterCount = 0;
+      dropOverlay.classList.remove('active');
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    dragEnterCount = 0;
+    dropOverlay.classList.remove('active');
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.type === 'application/json' || f.name.endsWith('.json')
+    );
+    if (files.length > 0) {
+      importData(files[0]);
+    } else {
+      alert('JSONファイルをドロップしてください');
+    }
+  });
+
+  // =============================================
+  // Autosave (File System Access API)
+  // =============================================
+  let autosaveHandle = null;
+  let autosaveLastJson = null;
+  let autosaveTimer = null;
+  let autosaveSavedTimer = null;
+  const btnAutosave = document.getElementById('btn-autosave');
+
+  btnAutosave.addEventListener('click', async () => {
+    if (autosaveHandle) {
+      disableAutosave();
+    } else {
+      await enableAutosave();
+    }
+  });
+
+  async function enableAutosave() {
+    if (!window.showSaveFilePicker) {
+      alert('お使いのブラウザはAutosave機能に対応していません。\nChrome または Edge をお使いください。');
+      return;
+    }
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: 'goyose-data.json',
+        types: [{ description: 'JSON Files', accept: { 'application/json': ['.json'] } }],
+      });
+      autosaveHandle = handle;
+      autosaveLastJson = null;
+      btnAutosave.textContent = 'Autosave ON';
+      btnAutosave.classList.add('active');
+      autosaveTimer = setInterval(doAutosave, 3000);
+      doAutosave(); // 即時保存
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        alert('Autosaveの設定に失敗しました: ' + err.message);
+      }
+    }
+  }
+
+  function disableAutosave() {
+    autosaveHandle = null;
+    autosaveLastJson = null;
+    if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; }
+    if (autosaveSavedTimer) { clearTimeout(autosaveSavedTimer); autosaveSavedTimer = null; }
+    btnAutosave.textContent = 'Autosave';
+    btnAutosave.classList.remove('active');
+  }
+
+  async function doAutosave() {
+    if (!autosaveHandle) return;
+    saveActiveTree();
+    const data = {
+      version: 1,
+      nextTreeId,
+      trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+      activeTreeId,
+    };
+    const json = JSON.stringify(data, null, 2);
+    if (json === autosaveLastJson) return; // 差分なし
+    try {
+      const writable = await autosaveHandle.createWritable();
+      await writable.write(json);
+      await writable.close();
+      autosaveLastJson = json;
+      if (autosaveSavedTimer) clearTimeout(autosaveSavedTimer);
+      btnAutosave.textContent = 'Saved ✓';
+      autosaveSavedTimer = setTimeout(() => {
+        if (autosaveHandle) btnAutosave.textContent = 'Autosave ON';
+      }, 1500);
+    } catch (err) {
+      console.error('Autosave failed:', err);
+      disableAutosave();
+      alert('Autosaveに失敗しました。無効化されました。\n' + err.message);
+    }
+  }
 
   // =============================================
   // Pan (background drag) + deselect
