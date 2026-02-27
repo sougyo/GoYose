@@ -279,6 +279,10 @@ body {
   border-radius: 2px;
 }
 
+/* Touch support */
+#canvas-area { touch-action: none; }
+.node-card   { touch-action: none; }
+
 .node-score {
   display: flex;
   align-items: center;
@@ -832,6 +836,35 @@ body {
       }
     });
 
+    // Board touch (tap to place stone)
+    let bcTouchX = null, bcTouchY = null;
+    bc.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { bcTouchX = null; return; }
+      bcTouchX = e.touches[0].clientX;
+      bcTouchY = e.touches[0].clientY;
+      e.stopPropagation(); // prevent node drag from starting
+    }, { passive: true });
+    bc.addEventListener('touchend', (e) => {
+      if (bcTouchX === null || e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0];
+      if (Math.abs(t.clientX - bcTouchX) > 10 || Math.abs(t.clientY - bcTouchY) > 10) {
+        bcTouchX = null; return; // swipe, not tap
+      }
+      bcTouchX = null;
+      const rect = bc.getBoundingClientRect();
+      const scaleX = bc.width / rect.width;
+      const scaleY = bc.height / rect.height;
+      const mx = (t.clientX - rect.left) * scaleX;
+      const my = (t.clientY - rect.top) * scaleY;
+      const col = Math.round((mx - padding) / cellSize);
+      const row = Math.round((my - padding) / cellSize);
+      if (col >= 0 && col < node.boardSize && row >= 0 && row < node.boardSize) {
+        node.board[row][col] = (node.board[row][col] + 1) % 3;
+        drawBoard(node);
+      }
+      e.preventDefault(); // prevent synthetic click
+    });
+
     // Selection
     card.addEventListener('mousedown', (e) => {
       if (e.target.tagName === 'INPUT') return;
@@ -962,6 +995,43 @@ body {
     });
     window.addEventListener('mouseup', () => {
       if (dragging) { dragging = false; card.style.zIndex = 10; }
+    });
+
+    // --- Touch drag + tap-to-select ---
+    let touchStartCX, touchStartCY, touchHasMoved = false;
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1 || e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
+      const t = e.touches[0];
+      dragging = true;
+      touchHasMoved = false;
+      touchStartCX = t.clientX;
+      touchStartCY = t.clientY;
+      offX = t.clientX - (node.x * zoom + panX);
+      offY = t.clientY - (node.y * zoom + panY);
+      card.style.zIndex = 20;
+      e.stopPropagation(); // prevent canvas pan from starting
+    });
+    window.addEventListener('touchmove', (e) => {
+      if (!dragging || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (!touchHasMoved && (Math.abs(t.clientX - touchStartCX) > 5 || Math.abs(t.clientY - touchStartCY) > 5)) {
+        touchHasMoved = true;
+      }
+      node.x = (t.clientX - offX - panX) / zoom;
+      node.y = (t.clientY - offY - panY) / zoom;
+      card.style.left = (node.x * zoom + panX) + 'px';
+      card.style.top  = (node.y * zoom + panY) + 'px';
+      drawConnections();
+      e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('touchend', (e) => {
+      if (!dragging) return;
+      dragging = false;
+      card.style.zIndex = 10;
+      if (!touchHasMoved) {
+        handleSelect(node.id, null);
+        e.preventDefault(); // prevent synthetic mousedown/click
+      }
     });
   }
 
@@ -1323,6 +1393,77 @@ body {
       if (!moved) {
         selectedIds = [];
         updateSelectionUI();
+      }
+    });
+
+    // --- Touch pan + pinch zoom ---
+    let pinching = false;
+    let pinchStartDist, pinchStartZoom, pinchStartMidX, pinchStartMidY, pinchStartPanX, pinchStartPanY;
+
+    canvasArea.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1 && (e.target === canvasArea || e.target === connCanvas)) {
+        panning = true;
+        moved = false;
+        const t = e.touches[0];
+        panStartX = t.clientX; panStartY = t.clientY;
+        panStartPanX = panX;   panStartPanY = panY;
+        canvasArea.classList.add('panning');
+      } else if (e.touches.length === 2) {
+        panning = false;
+        canvasArea.classList.remove('panning');
+        pinching = true;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        pinchStartDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        pinchStartZoom = zoom;
+        const ar = canvasArea.getBoundingClientRect();
+        pinchStartMidX = (t0.clientX + t1.clientX) / 2 - ar.left;
+        pinchStartMidY = (t0.clientY + t1.clientY) / 2 - ar.top;
+        pinchStartPanX = panX; pinchStartPanY = panY;
+      }
+    });
+
+    canvasArea.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (pinching && e.touches.length === 2) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const ar   = canvasArea.getBoundingClientRect();
+        const midX = (t0.clientX + t1.clientX) / 2 - ar.left;
+        const midY = (t0.clientY + t1.clientY) / 2 - ar.top;
+        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * dist / pinchStartDist));
+        // Zoom around initial pinch midpoint
+        const wx = (pinchStartMidX - pinchStartPanX) / pinchStartZoom;
+        const wy = (pinchStartMidY - pinchStartPanY) / pinchStartZoom;
+        panX = midX - wx * zoom;
+        panY = midY - wy * zoom;
+        repositionAll();
+      } else if (panning && e.touches.length === 1) {
+        const t = e.touches[0];
+        const dx = t.clientX - panStartX;
+        const dy = t.clientY - panStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+        panX = panStartPanX + dx;
+        panY = panStartPanY + dy;
+        repositionAll();
+      }
+    }, { passive: false });
+
+    canvasArea.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinching = false;
+      if (e.touches.length === 0) {
+        if (panning) {
+          panning = false;
+          canvasArea.classList.remove('panning');
+          if (!moved) { selectedIds = []; updateSelectionUI(); }
+        }
+      } else if (e.touches.length === 1 && !panning) {
+        // Lifted one finger from pinch → transition to single-finger pan
+        pinching = false;
+        panning = true;
+        moved = true; // prevent deselect on finger lift
+        const t = e.touches[0];
+        panStartX = t.clientX; panStartY = t.clientY;
+        panStartPanX = panX;   panStartPanY = panY;
       }
     });
   }
