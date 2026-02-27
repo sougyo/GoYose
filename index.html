@@ -396,6 +396,7 @@ body {
   let panX = 0, panY = 0;
   let zoom = 1;
   const ZOOM_MIN = 0.2, ZOOM_MAX = 3;
+  let lastSavedJson = null; // 最後に保存した状態（未保存検出用）
 
   const canvasArea = document.getElementById('canvas-area');
   const connCanvas = document.getElementById('connection-canvas');
@@ -431,6 +432,16 @@ body {
   function saveActiveTree() {
     const tree = trees.find(t => t.id === activeTreeId);
     if (tree) tree.data = serializeCurrentTree();
+  }
+
+  function getSerializedData() {
+    saveActiveTree();
+    return JSON.stringify({
+      version: 1,
+      nextTreeId,
+      trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+      activeTreeId,
+    });
   }
 
   function clearCanvas() {
@@ -640,6 +651,7 @@ body {
       activeTreeId,
     };
     const json = JSON.stringify(data, null, 2);
+    lastSavedJson = json;
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -666,6 +678,7 @@ body {
         const targetId = data.activeTreeId || trees[0].id;
         activeTreeId = null; // reset so loadTree works
         loadTree(targetId);
+        lastSavedJson = getSerializedData();
       } catch (err) {
         alert('ファイルの読み込みに失敗しました: ' + err.message);
       }
@@ -1344,6 +1357,7 @@ body {
       await writable.write(json);
       await writable.close();
       autosaveLastJson = json;
+      lastSavedJson = json;
       if (autosaveSavedTimer) clearTimeout(autosaveSavedTimer);
       btnAutosave.textContent = 'Saved ✓';
       autosaveSavedTimer = setTimeout(() => {
@@ -1490,9 +1504,20 @@ body {
   }, { passive: false });
 
   // =============================================
+  // Warn on unsaved changes
+  // =============================================
+  window.addEventListener('beforeunload', (e) => {
+    if (getSerializedData() !== lastSavedJson) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  // =============================================
   // Initialize with one default tree
   // =============================================
   addNewTree('Untitled');
+  lastSavedJson = getSerializedData(); // 初期状態を「保存済み」とみなす
 })();
 </script>
 </body>
