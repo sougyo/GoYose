@@ -355,17 +355,16 @@ body {
 
 <div id="right-panel">
   <div id="toolbar">
-    <button id="btn-add">+ ノード追加</button>
+    <button id="btn-add">+ 盤面追加</button>
     <label>盤サイズ: <input type="number" id="board-size" value="9" min="3" max="19"></label>
     <div class="separator"></div>
     <button id="btn-connect">接続 (2ノード選択)</button>
-    <button id="btn-delete">削除</button>
     <div class="separator"></div>
     <button id="btn-calc">計算</button>
     <div class="separator"></div>
-    <button id="btn-export">エクスポート</button>
-    <button id="btn-import">インポート</button>
-    <button id="btn-autosave">Autosave</button>
+    <button id="btn-export">保存</button>
+    <button id="btn-import">読込</button>
+    <button id="btn-autosave">自動保存</button>
   </div>
   <div id="canvas-area">
     <canvas id="connection-canvas"></canvas>
@@ -1198,15 +1197,6 @@ body {
     updateSelectionUI();
   });
 
-  document.getElementById('btn-delete').addEventListener('click', () => {
-    if (selectedIds.length === 0) {
-      alert('削除するノードを選択してください');
-      return;
-    }
-    for (const id of [...selectedIds]) removeNode(id);
-    drawConnections();
-  });
-
   document.getElementById('btn-calc').addEventListener('click', calculate);
 
   // --- Delete key to remove selected nodes ---
@@ -1306,7 +1296,7 @@ body {
 
   async function enableAutosave() {
     if (!window.showSaveFilePicker) {
-      alert('お使いのブラウザはAutosave機能に対応していません。\nChrome または Edge をお使いください。');
+      alert('お使いのブラウザは自動保存機能に対応していません。\nChrome または Edge をお使いください。');
       return;
     }
     try {
@@ -1316,13 +1306,13 @@ body {
       });
       autosaveHandle = handle;
       autosaveLastJson = null;
-      btnAutosave.textContent = 'Autosave ON';
+      btnAutosave.textContent = '自動保存ON';
       btnAutosave.classList.add('active');
       autosaveTimer = setInterval(doAutosave, 3000);
       doAutosave(); // 即時保存
     } catch (err) {
       if (err.name !== 'AbortError') {
-        alert('Autosaveの設定に失敗しました: ' + err.message);
+        alert('自動保存の設定に失敗しました: ' + err.message);
       }
     }
   }
@@ -1332,7 +1322,7 @@ body {
     autosaveLastJson = null;
     if (autosaveTimer) { clearInterval(autosaveTimer); autosaveTimer = null; }
     if (autosaveSavedTimer) { clearTimeout(autosaveSavedTimer); autosaveSavedTimer = null; }
-    btnAutosave.textContent = 'Autosave';
+    btnAutosave.textContent = '自動保存';
     btnAutosave.classList.remove('active');
   }
 
@@ -1354,14 +1344,14 @@ body {
       autosaveLastJson = json;
       lastSavedJson = json;
       if (autosaveSavedTimer) clearTimeout(autosaveSavedTimer);
-      btnAutosave.textContent = 'Saved ✓';
+      btnAutosave.textContent = '保存済 ✓';
       autosaveSavedTimer = setTimeout(() => {
-        if (autosaveHandle) btnAutosave.textContent = 'Autosave ON';
+        if (autosaveHandle) btnAutosave.textContent = '自動保存ON';
       }, 1500);
     } catch (err) {
       console.error('Autosave failed:', err);
       disableAutosave();
-      alert('Autosaveに失敗しました。無効化されました。\n' + err.message);
+      alert('自動保存に失敗しました。無効化されました。\n' + err.message);
     }
   }
 
