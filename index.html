@@ -133,8 +133,7 @@ body {
 #sidebar.collapsed #sidebar-header { padding: 6px 6px; justify-content: center; }
 #sidebar.collapsed .sidebar-title,
 #sidebar.collapsed #btn-new-tree,
-#sidebar.collapsed #tree-list,
-#sidebar.collapsed #sidebar-footer { display: none; }
+#sidebar.collapsed #tree-list { display: none; }
 
 #sidebar-header #btn-sidebar-toggle {
   flex-shrink: 0;
@@ -197,28 +196,6 @@ body {
 
 #tree-list li .btn-delete-tree:hover { color: #e55; }
 
-#sidebar-footer {
-  padding: 8px 10px;
-  border-top: 1px solid #444;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-#btn-autosave { width: 100%; }
-
-#sidebar-footer button {
-  flex: 1;
-  background: #555;
-  color: #fff;
-  border: none;
-  padding: 5px 0;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-#sidebar-footer button:hover { background: #777; }
 
 /* --- Canvas area --- */
 #canvas-area {
@@ -374,11 +351,6 @@ body {
     <button id="btn-new-tree">+ 新規</button>
   </div>
   <ul id="tree-list"></ul>
-  <div id="sidebar-footer">
-    <button id="btn-export">エクスポート</button>
-    <button id="btn-import">インポート</button>
-    <button id="btn-autosave">Autosave</button>
-  </div>
 </div>
 
 <div id="right-panel">
@@ -390,6 +362,10 @@ body {
     <button id="btn-delete">削除</button>
     <div class="separator"></div>
     <button id="btn-calc">計算</button>
+    <div class="separator"></div>
+    <button id="btn-export">エクスポート</button>
+    <button id="btn-import">インポート</button>
+    <button id="btn-autosave">Autosave</button>
   </div>
   <div id="canvas-area">
     <canvas id="connection-canvas"></canvas>
