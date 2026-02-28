@@ -55,4 +55,4 @@ https://sougyo.github.io/GoYose/ にアクセスしてください。
 
 ## ライセンス
 
-[Apache License 2.0](LICENSE)
+[MIT License](LICENSE)
