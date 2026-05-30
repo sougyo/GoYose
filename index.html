@@ -823,9 +823,8 @@ body {
     // Board click
     bc.addEventListener('click', (e) => {
       const rect = bc.getBoundingClientRect();
-      // Derive actual scale from rendered size vs canvas intrinsic size
-      const scaleX = bc.width / rect.width;
-      const scaleY = bc.height / rect.height;
+      const scaleX = canvasSize / rect.width;
+      const scaleY = canvasSize / rect.height;
       const mx = (e.clientX - rect.left) * scaleX;
       const my = (e.clientY - rect.top) * scaleY;
       const col = Math.round((mx - padding) / cellSize);
@@ -852,8 +851,8 @@ body {
       }
       bcTouchX = null;
       const rect = bc.getBoundingClientRect();
-      const scaleX = bc.width / rect.width;
-      const scaleY = bc.height / rect.height;
+      const scaleX = canvasSize / rect.width;
+      const scaleY = canvasSize / rect.height;
       const mx = (t.clientX - rect.left) * scaleX;
       const my = (t.clientY - rect.top) * scaleY;
       const col = Math.round((mx - padding) / cellSize);
