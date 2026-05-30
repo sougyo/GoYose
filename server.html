@@ -54,6 +54,7 @@ body {
 
 #toolbar button:hover { background: #777; }
 #toolbar button.active { background: #e8a735; color: #333; }
+#toolbar button.error { background: #c0392b; color: #fff; }
 
 #toolbar label {
   font-size: 14px;
@@ -1292,16 +1293,12 @@ body {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       serverLastJson = json;
       lastSavedJson = json;
-      btnAutosave.textContent = '保存済 ✓';
-      btnAutosave.classList.add('active');
-      setTimeout(() => {
-        btnAutosave.textContent = '自動保存';
-        btnAutosave.classList.remove('active');
-      }, 1500);
+      btnAutosave.textContent = '自動保存';
+      btnAutosave.classList.remove('error');
     } catch (err) {
       console.error('Server save failed:', err);
       btnAutosave.textContent = '保存失敗!';
-      setTimeout(() => { btnAutosave.textContent = '自動保存'; }, 3000);
+      btnAutosave.classList.add('error');
     }
   }
 
