@@ -1,0 +1,1515 @@
+<!--
+  Copyright 2026 Shogo Matsumoto
+
+  Released under the MIT License.
+  See https://opensource.org/licenses/MIT
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>囲碁ヨセ研究 (サーバー版)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Segoe UI', sans-serif;
+  background: #f0f0f0;
+  overflow: hidden;
+  height: 100vh;
+  display: flex;
+  flex-direction: row;
+}
+
+#toolbar {
+  background: #333;
+  color: #fff;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 100;
+  flex-wrap: wrap;
+}
+
+#toolbar button {
+  background: #555;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 6px 2px rgba(72, 199, 96, 0.3); }
+  50%      { box-shadow: 0 0 18px 6px rgba(72, 199, 96, 0.7); }
+}
+#btn-add.glow-hint {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+#toolbar button:hover { background: #777; }
+#toolbar button.active { background: #e8a735; color: #333; }
+
+#toolbar label {
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+#toolbar input[type="number"] {
+  width: 50px;
+  padding: 4px;
+  border: none;
+  border-radius: 3px;
+  text-align: center;
+}
+
+#toolbar .separator {
+  width: 1px;
+  height: 24px;
+  background: #666;
+}
+
+#right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- Sidebar --- */
+#sidebar {
+  width: 200px;
+  background: #2b2b2b;
+  color: #ddd;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  z-index: 90;
+  border-right: 1px solid #444;
+  transition: width 0.2s ease;
+  overflow: hidden;
+}
+
+#sidebar-header {
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #444;
+  font-size: 13px;
+  font-weight: bold;
+  color: #aaa;
+}
+
+#sidebar-header button {
+  background: #555;
+  color: #fff;
+  border: none;
+  padding: 3px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+#sidebar-header button:hover { background: #777; }
+
+#sidebar.collapsed { width: 40px; }
+#sidebar.collapsed #sidebar-header { padding: 6px 6px; justify-content: center; }
+#sidebar.collapsed .sidebar-title,
+#sidebar.collapsed #btn-new-tree,
+#sidebar.collapsed #tree-list { display: none; }
+
+#sidebar-header #btn-sidebar-toggle {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+}
+
+#tree-list {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+}
+
+#tree-list li {
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid #393939;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#tree-list li:hover { background: #3a3a3a; }
+#tree-list li.active { background: #4a4a2a; color: #fff; }
+#tree-list li.drag-over-above { border-top: 2px solid #e8a735; }
+#tree-list li.drag-over-below { border-bottom: 2px solid #e8a735; }
+#tree-list li.dragging { opacity: 0.4; }
+
+#tree-list li .tree-title-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tree-list li .tree-title-input {
+  flex: 1;
+  background: #444;
+  color: #fff;
+  border: 1px solid #e8a735;
+  border-radius: 3px;
+  padding: 2px 4px;
+  font-size: 13px;
+  outline: none;
+}
+
+#tree-list li .btn-delete-tree {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+}
+
+#tree-list li .btn-delete-tree:hover { color: #e55; }
+
+
+/* --- Canvas area --- */
+#canvas-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+}
+
+#canvas-area.panning { cursor: grabbing; }
+
+#connection-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.node-card {
+  position: absolute;
+  background: #fff;
+  border: 2px solid #ccc;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: grab;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  user-select: none;
+  min-width: 80px;
+}
+
+.node-card:active { cursor: grabbing; }
+.node-card.selected { border-color: #e8a735; box-shadow: 0 0 0 3px rgba(232,167,53,0.3); }
+
+.node-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: #666;
+}
+
+.node-header .btn-copy {
+  background: #e8e8e8;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #444;
+  line-height: 1.4;
+}
+
+.node-header .btn-copy:hover { background: #d0d0d0; }
+
+.node-header .btn-delete-node {
+  background: #e8e8e8;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 4px 7px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #999;
+  line-height: 1.4;
+}
+
+.node-header .btn-delete-node:hover { background: #f0c0c0; color: #c33; border-color: #c33; }
+
+.node-board-canvas {
+  display: block;
+  margin: 0 auto 6px;
+  cursor: crosshair;
+  border-radius: 2px;
+}
+
+/* Touch support */
+#canvas-area { touch-action: none; }
+.node-card   { touch-action: none; }
+
+.node-score {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.node-score label { color: #666; }
+
+.node-score input {
+  width: 60px;
+  padding: 3px 4px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.node-score .computed {
+  font-weight: bold;
+  color: #2a7d2a;
+  font-size: 15px;
+}
+
+#instructions {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Hidden file input */
+#import-input { display: none; }
+
+/* Drop overlay */
+#drop-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.55);
+  color: #fff;
+  font-size: 22px;
+  font-weight: bold;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+  border: 4px dashed #e8a735;
+}
+#drop-overlay.active { display: flex; }
+#drop-overlay .drop-icon { font-size: 52px; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="sidebar-header">
+    <button id="btn-sidebar-toggle" title="折りたたむ">◀</button>
+    <span class="sidebar-title">ツリー一覧</span>
+    <button id="btn-new-tree">+ 新規</button>
+  </div>
+  <ul id="tree-list"></ul>
+</div>
+
+<div id="right-panel">
+  <div id="toolbar">
+    <button id="btn-add">+ 盤面追加</button>
+    <label>盤サイズ: <input type="number" id="board-size" value="9" min="3" max="19"></label>
+    <div class="separator"></div>
+    <button id="btn-connect">接続 (2ノード選択)</button>
+    <div class="separator"></div>
+    <button id="btn-calc">計算</button>
+    <div class="separator"></div>
+    <button id="btn-export">保存</button>
+    <button id="btn-import">読込</button>
+    <button id="btn-autosave">自動保存</button>
+  </div>
+  <div id="canvas-area">
+    <canvas id="connection-canvas"></canvas>
+    <div id="instructions">ノードを追加して木構造を構築 → 葉ノードに目数を入力 → 計算ボタンで伝播</div>
+  </div>
+</div>
+
+<input type="file" id="import-input" accept=".json">
+
+<script>
+(function() {
+  // =============================================
+  // Multi-tree state
+  // =============================================
+  let trees = [];        // array of tree data objects
+  let activeTreeId = null;
+  let nextTreeId = 1;
+
+  // Current tree's live state (mirrors the active tree)
+  let nodes = [];
+  let nextNodeId = 1;
+  let selectedIds = [];
+  let panX = 0, panY = 0;
+  let zoom = 1;
+  const ZOOM_MIN = 0.2, ZOOM_MAX = 3;
+  let lastSavedJson = null; // 最後に保存した状態（未保存検出用）
+
+  const canvasArea = document.getElementById('canvas-area');
+  const connCanvas = document.getElementById('connection-canvas');
+  const connCtx = connCanvas.getContext('2d');
+  const treeListEl = document.getElementById('tree-list');
+
+  // =============================================
+  // Tree serialization helpers
+  // =============================================
+  function serializeCurrentTree() {
+    // Read score from leaf inputs before saving
+    for (const n of nodes) {
+      if (n.childIds.length === 0 && n.el) {
+        const inp = n.el.querySelector('.score-input');
+        if (inp) n.score = inp.value !== '' ? parseFloat(inp.value) : null;
+      }
+    }
+    return {
+      nodes: nodes.map(n => ({
+        id: n.id,
+        x: n.x, y: n.y,
+        boardSize: n.boardSize,
+        board: n.board,
+        score: n.score,
+        childIds: [...n.childIds],
+        parentId: n.parentId,
+      })),
+      nextNodeId,
+      panX, panY, zoom,
+    };
+  }
+
+  function saveActiveTree() {
+    const tree = trees.find(t => t.id === activeTreeId);
+    if (tree) tree.data = serializeCurrentTree();
+  }
+
+  function getSerializedData() {
+    saveActiveTree();
+    return JSON.stringify({
+      version: 1,
+      nextTreeId,
+      trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+      activeTreeId,
+    });
+  }
+
+  function clearCanvas() {
+    for (const n of nodes) { if (n.el) n.el.remove(); }
+    nodes = [];
+    nextNodeId = 1;
+    selectedIds = [];
+    panX = 0; panY = 0; zoom = 1;
+    drawConnections();
+  }
+
+  function loadTree(treeId) {
+    if (activeTreeId !== null) saveActiveTree();
+    clearCanvas();
+    activeTreeId = treeId;
+    const tree = trees.find(t => t.id === treeId);
+    if (!tree) return;
+    const d = tree.data;
+    nextNodeId = d.nextNodeId || 1;
+    panX = d.panX || 0;
+    panY = d.panY || 0;
+    zoom = d.zoom || 1;
+    // Recreate node objects (without DOM yet)
+    const nodeMap = {};
+    for (const nd of d.nodes) {
+      const node = {
+        id: nd.id,
+        x: nd.x, y: nd.y,
+        boardSize: nd.boardSize,
+        board: nd.board.map(row => [...row]),
+        score: nd.score,
+        childIds: [...nd.childIds],
+        parentId: nd.parentId,
+        el: null,
+        boardCanvas: null,
+      };
+      nodes.push(node);
+      nodeMap[node.id] = node;
+    }
+    // Render all
+    for (const node of nodes) renderNode(node);
+    drawConnections();
+    renderTreeList();
+  }
+
+  // =============================================
+  // Tree list management
+  // =============================================
+  function addNewTree(title) {
+    const tree = {
+      id: nextTreeId++,
+      title: title || 'Untitled',
+      data: { nodes: [], nextNodeId: 1, panX: 0, panY: 0, zoom: 1 },
+    };
+    trees.push(tree);
+    loadTree(tree.id);
+    return tree;
+  }
+
+  function deleteTree(treeId) {
+    if (trees.length <= 1) return; // keep at least one
+    trees = trees.filter(t => t.id !== treeId);
+    if (activeTreeId === treeId) {
+      loadTree(trees[0].id);
+    } else {
+      renderTreeList();
+    }
+  }
+
+  let dragSrcTreeId = null;
+
+  function renderTreeList() {
+    treeListEl.innerHTML = '';
+    for (const tree of trees) {
+      const li = document.createElement('li');
+      li.dataset.treeId = tree.id;
+      if (tree.id === activeTreeId) li.classList.add('active');
+
+      // Make draggable
+      li.draggable = true;
+
+      // Title display
+      const titleSpan = document.createElement('span');
+      titleSpan.className = 'tree-title-text';
+      titleSpan.textContent = tree.title;
+      li.appendChild(titleSpan);
+
+      // Delete button
+      const delBtn = document.createElement('button');
+      delBtn.className = 'btn-delete-tree';
+      delBtn.textContent = '×';
+      delBtn.title = '削除';
+      li.appendChild(delBtn);
+
+      // Click to switch
+      titleSpan.addEventListener('click', () => {
+        if (tree.id === activeTreeId) return;
+        loadTree(tree.id);
+      });
+
+      // Double-click to rename
+      titleSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startRename(li, tree);
+      });
+
+      // Delete
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (trees.length <= 1) { alert('最後のツリーは削除できません'); return; }
+        deleteTree(tree.id);
+      });
+
+      // --- Drag & Drop ---
+      li.addEventListener('dragstart', (e) => {
+        dragSrcTreeId = tree.id;
+        li.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      li.addEventListener('dragend', () => {
+        dragSrcTreeId = null;
+        li.classList.remove('dragging');
+        clearDropIndicators();
+      });
+
+      li.addEventListener('dragover', (e) => {
+        if (dragSrcTreeId === null || dragSrcTreeId === tree.id) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        clearDropIndicators();
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+          li.classList.add('drag-over-above');
+        } else {
+          li.classList.add('drag-over-below');
+        }
+      });
+
+      li.addEventListener('dragleave', () => {
+        li.classList.remove('drag-over-above', 'drag-over-below');
+      });
+
+      li.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (dragSrcTreeId === null || dragSrcTreeId === tree.id) return;
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const insertBefore = e.clientY < midY;
+        // Reorder trees array
+        const srcIdx = trees.findIndex(t => t.id === dragSrcTreeId);
+        const srcTree = trees.splice(srcIdx, 1)[0];
+        let destIdx = trees.findIndex(t => t.id === tree.id);
+        if (!insertBefore) destIdx++;
+        trees.splice(destIdx, 0, srcTree);
+        dragSrcTreeId = null;
+        renderTreeList();
+      });
+
+      treeListEl.appendChild(li);
+    }
+  }
+
+  function clearDropIndicators() {
+    for (const el of treeListEl.querySelectorAll('.drag-over-above, .drag-over-below')) {
+      el.classList.remove('drag-over-above', 'drag-over-below');
+    }
+  }
+
+  function startRename(li, tree) {
+    const existing = li.querySelector('.tree-title-input');
+    if (existing) return;
+    const titleSpan = li.querySelector('.tree-title-text');
+    titleSpan.style.display = 'none';
+
+    const input = document.createElement('input');
+    input.className = 'tree-title-input';
+    input.value = tree.title;
+    li.insertBefore(input, titleSpan);
+    input.focus();
+    input.select();
+
+    function commit() {
+      const val = input.value.trim();
+      tree.title = val || 'Untitled';
+      input.remove();
+      titleSpan.style.display = '';
+      titleSpan.textContent = tree.title;
+    }
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') { input.value = tree.title; input.blur(); }
+    });
+  }
+
+  // =============================================
+  // Export / Import
+  // =============================================
+  function exportData() {
+    saveActiveTree();
+    const data = {
+      version: 1,
+      nextTreeId,
+      trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+      activeTreeId,
+    };
+    const json = JSON.stringify(data, null, 2);
+    lastSavedJson = json;
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'goyose-data.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importData(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (!data.trees || !Array.isArray(data.trees)) throw new Error('invalid format');
+        // Clear current state
+        clearCanvas();
+        trees = data.trees.map(t => ({
+          id: t.id,
+          title: t.title || 'Untitled',
+          data: t.data,
+        }));
+        nextTreeId = data.nextTreeId || (Math.max(...trees.map(t => t.id)) + 1);
+        const targetId = data.activeTreeId || trees[0].id;
+        activeTreeId = null; // reset so loadTree works
+        loadTree(targetId);
+        lastSavedJson = getSerializedData();
+      } catch (err) {
+        alert('ファイルの読み込みに失敗しました: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // =============================================
+  // Resize connection canvas
+  // =============================================
+  function resizeConnCanvas() {
+    connCanvas.width = canvasArea.clientWidth;
+    connCanvas.height = canvasArea.clientHeight;
+    drawConnections();
+  }
+  window.addEventListener('resize', resizeConnCanvas);
+  requestAnimationFrame(resizeConnCanvas);
+
+  // =============================================
+  // Node CRUD
+  // =============================================
+  function createNode(x, y, boardSize) {
+    const board = [];
+    for (let r = 0; r < boardSize; r++) {
+      board.push(new Array(boardSize).fill(0));
+    }
+    const node = {
+      id: nextNodeId++,
+      x, y,
+      boardSize,
+      board,
+      score: null,
+      childIds: [],
+      parentId: null,
+      el: null,
+      boardCanvas: null,
+    };
+    nodes.push(node);
+    renderNode(node);
+    return node;
+  }
+
+  function copyAsChild(parentNode) {
+    const child = createNode(parentNode.x + 60, parentNode.y + 250, parentNode.boardSize);
+    for (let r = 0; r < parentNode.boardSize; r++) {
+      for (let c = 0; c < parentNode.boardSize; c++) {
+        child.board[r][c] = parentNode.board[r][c];
+      }
+    }
+    drawBoard(child);
+    connectNodes(parentNode.id, child.id);
+    return child;
+  }
+
+  function findNode(id) {
+    return nodes.find(n => n.id === id);
+  }
+
+  function removeNode(id) {
+    const node = findNode(id);
+    if (!node) return;
+    if (node.parentId !== null) {
+      const parent = findNode(node.parentId);
+      if (parent) parent.childIds = parent.childIds.filter(c => c !== id);
+    }
+    for (const cid of node.childIds) {
+      const child = findNode(cid);
+      if (child) child.parentId = null;
+    }
+    if (node.el) node.el.remove();
+    nodes = nodes.filter(n => n.id !== id);
+    selectedIds = selectedIds.filter(s => s !== id);
+    drawConnections();
+  }
+
+  function connectNodes(parentId, childId) {
+    if (parentId === childId) return;
+    const parent = findNode(parentId);
+    const child = findNode(childId);
+    if (!parent || !child) return;
+    if (isAncestor(childId, parentId)) return;
+    if (child.parentId !== null) {
+      const oldParent = findNode(child.parentId);
+      if (oldParent) oldParent.childIds = oldParent.childIds.filter(c => c !== childId);
+    }
+    child.parentId = parentId;
+    if (!parent.childIds.includes(childId)) parent.childIds.push(childId);
+    updateNodeScoreUI(parent);
+    updateNodeScoreUI(child);
+    drawConnections();
+  }
+
+  function isAncestor(ancestorId, nodeId) {
+    let cur = findNode(nodeId);
+    while (cur) {
+      if (cur.id === ancestorId) return true;
+      cur = cur.parentId !== null ? findNode(cur.parentId) : null;
+    }
+    return false;
+  }
+
+  // =============================================
+  // Render Node DOM
+  // =============================================
+  function renderNode(node) {
+    const card = document.createElement('div');
+    card.className = 'node-card';
+    card.dataset.nodeId = node.id;
+    card.style.left = (node.x * zoom + panX) + 'px';
+    card.style.top = (node.y * zoom + panY) + 'px';
+    card.style.transform = 'scale(' + zoom + ')';
+    card.style.transformOrigin = '0 0';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'node-header';
+    header.innerHTML = `<span>Node ${node.id}</span><button class="btn-copy" title="盤面をコピーして子ノードを作成">複製</button><span>${node.boardSize}x${node.boardSize}</span><button class="btn-delete-node" title="ノードを削除">×</button>`;
+    const copyBtn = header.querySelector('.btn-copy');
+    copyBtn.addEventListener('mousedown', e => e.stopPropagation());
+    copyBtn.addEventListener('click', (e) => { e.stopPropagation(); copyAsChild(node); });
+    const delNodeBtn = header.querySelector('.btn-delete-node');
+    delNodeBtn.addEventListener('mousedown', e => e.stopPropagation());
+    delNodeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeNode(node.id); drawConnections(); });
+    card.appendChild(header);
+
+    // Board canvas
+    const cellSize = node.boardSize <= 9 ? 24 : (node.boardSize <= 13 ? 18 : 14);
+    const padding = cellSize;
+    const canvasSize = cellSize * (node.boardSize - 1) + padding * 2;
+    const bc = document.createElement('canvas');
+    bc.className = 'node-board-canvas';
+    bc.width = canvasSize;
+    bc.height = canvasSize;
+    card.appendChild(bc);
+    node.boardCanvas = bc;
+
+    // Score area
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'node-score';
+    const isLeaf = node.childIds.length === 0;
+    if (isLeaf) {
+      scoreDiv.innerHTML = `<label>目数:</label><input type="number" step="0.5" class="score-input" value="${node.score !== null ? node.score : ''}">`;
+      const inp = scoreDiv.querySelector('input');
+      inp.addEventListener('change', () => {
+        node.score = inp.value !== '' ? parseFloat(inp.value) : null;
+      });
+      inp.addEventListener('mousedown', e => e.stopPropagation());
+      inp.addEventListener('click', e => e.stopPropagation());
+    } else {
+      scoreDiv.innerHTML = `<label>目数:</label><span class="computed">${node.score !== null ? node.score.toFixed(2) : '—'}</span>`;
+    }
+    card.appendChild(scoreDiv);
+    node.el = card;
+
+    // Board click
+    bc.addEventListener('click', (e) => {
+      const rect = bc.getBoundingClientRect();
+      // Derive actual scale from rendered size vs canvas intrinsic size
+      const scaleX = bc.width / rect.width;
+      const scaleY = bc.height / rect.height;
+      const mx = (e.clientX - rect.left) * scaleX;
+      const my = (e.clientY - rect.top) * scaleY;
+      const col = Math.round((mx - padding) / cellSize);
+      const row = Math.round((my - padding) / cellSize);
+      if (col >= 0 && col < node.boardSize && row >= 0 && row < node.boardSize) {
+        node.board[row][col] = (node.board[row][col] + 1) % 3;
+        drawBoard(node);
+      }
+    });
+
+    // Board touch (tap to place stone)
+    let bcTouchX = null, bcTouchY = null;
+    bc.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) { bcTouchX = null; return; }
+      bcTouchX = e.touches[0].clientX;
+      bcTouchY = e.touches[0].clientY;
+      e.stopPropagation(); // prevent node drag from starting
+    }, { passive: true });
+    bc.addEventListener('touchend', (e) => {
+      if (bcTouchX === null || e.changedTouches.length !== 1) return;
+      const t = e.changedTouches[0];
+      if (Math.abs(t.clientX - bcTouchX) > 10 || Math.abs(t.clientY - bcTouchY) > 10) {
+        bcTouchX = null; return; // swipe, not tap
+      }
+      bcTouchX = null;
+      const rect = bc.getBoundingClientRect();
+      const scaleX = bc.width / rect.width;
+      const scaleY = bc.height / rect.height;
+      const mx = (t.clientX - rect.left) * scaleX;
+      const my = (t.clientY - rect.top) * scaleY;
+      const col = Math.round((mx - padding) / cellSize);
+      const row = Math.round((my - padding) / cellSize);
+      if (col >= 0 && col < node.boardSize && row >= 0 && row < node.boardSize) {
+        node.board[row][col] = (node.board[row][col] + 1) % 3;
+        drawBoard(node);
+      }
+      e.preventDefault(); // prevent synthetic click
+    });
+
+    // Selection
+    card.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      handleSelect(node.id, e);
+    });
+
+    // Drag
+    setupDrag(card, node);
+
+    canvasArea.appendChild(card);
+    drawBoard(node);
+  }
+
+  function updateNodeScoreUI(node) {
+    if (!node || !node.el) return;
+    const scoreDiv = node.el.querySelector('.node-score');
+    const isLeaf = node.childIds.length === 0;
+    if (isLeaf) {
+      if (!scoreDiv.querySelector('input')) {
+        scoreDiv.innerHTML = `<label>目数:</label><input type="number" step="0.5" class="score-input" value="${node.score !== null ? node.score : ''}">`;
+        const inp = scoreDiv.querySelector('input');
+        inp.addEventListener('change', () => {
+          node.score = inp.value !== '' ? parseFloat(inp.value) : null;
+        });
+        inp.addEventListener('mousedown', e => e.stopPropagation());
+        inp.addEventListener('click', e => e.stopPropagation());
+      }
+    } else {
+      scoreDiv.innerHTML = `<label>目数:</label><span class="computed">${node.score !== null ? node.score.toFixed(2) : '—'}</span>`;
+    }
+  }
+
+  // =============================================
+  // Draw Board
+  // =============================================
+  function drawBoard(node) {
+    const bc = node.boardCanvas;
+    const ctx = bc.getContext('2d');
+    const bs = node.boardSize;
+    const cellSize = bs <= 9 ? 24 : (bs <= 13 ? 18 : 14);
+    const padding = cellSize;
+
+    ctx.fillStyle = '#e8c36a';
+    ctx.fillRect(0, 0, bc.width, bc.height);
+
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < bs; i++) {
+      const p = padding + i * cellSize;
+      ctx.beginPath(); ctx.moveTo(padding, p); ctx.lineTo(padding + (bs - 1) * cellSize, p); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(p, padding); ctx.lineTo(p, padding + (bs - 1) * cellSize); ctx.stroke();
+    }
+
+    const starPoints = getStarPoints(bs);
+    for (const [sr, sc] of starPoints) {
+      ctx.fillStyle = '#333';
+      ctx.beginPath();
+      ctx.arc(padding + sc * cellSize, padding + sr * cellSize, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const stoneR = cellSize * 0.42;
+    for (let r = 0; r < bs; r++) {
+      for (let c = 0; c < bs; c++) {
+        const v = node.board[r][c];
+        if (v === 0) continue;
+        const cx = padding + c * cellSize;
+        const cy = padding + r * cellSize;
+        ctx.beginPath();
+        ctx.arc(cx, cy, stoneR, 0, Math.PI * 2);
+        ctx.fillStyle = v === 1 ? '#111' : '#eee';
+        ctx.fill();
+        ctx.strokeStyle = v === 1 ? '#000' : '#aaa';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+  }
+
+  function getStarPoints(size) {
+    if (size < 7) return [];
+    const pts = [];
+    const edge = size <= 9 ? 2 : 3;
+    const mid = Math.floor(size / 2);
+    const positions = [edge, size - 1 - edge];
+    if (size % 2 === 1) positions.splice(1, 0, mid);
+    for (const r of positions) {
+      for (const c of positions) {
+        pts.push([r, c]);
+      }
+    }
+    return pts;
+  }
+
+  // =============================================
+  // Reposition / Drag / Selection
+  // =============================================
+  function repositionAll() {
+    for (const n of nodes) {
+      if (n.el) {
+        n.el.style.left = (n.x * zoom + panX) + 'px';
+        n.el.style.top = (n.y * zoom + panY) + 'px';
+        n.el.style.transform = 'scale(' + zoom + ')';
+        n.el.style.transformOrigin = '0 0';
+      }
+    }
+    drawConnections();
+  }
+
+  function setupDrag(card, node) {
+    let dragging = false;
+    let offX, offY;
+    card.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS') return;
+      dragging = true;
+      offX = e.clientX - (node.x * zoom + panX);
+      offY = e.clientY - (node.y * zoom + panY);
+      card.style.zIndex = 20;
+      e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      node.x = (e.clientX - offX - panX) / zoom;
+      node.y = (e.clientY - offY - panY) / zoom;
+      card.style.left = (node.x * zoom + panX) + 'px';
+      card.style.top = (node.y * zoom + panY) + 'px';
+      drawConnections();
+    });
+    window.addEventListener('mouseup', () => {
+      if (dragging) { dragging = false; card.style.zIndex = 10; }
+    });
+
+    // --- Touch drag + tap-to-select ---
+    let touchStartCX, touchStartCY, touchHasMoved = false;
+    card.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1 || e.target.tagName === 'INPUT' || e.target.tagName === 'CANVAS' || e.target.tagName === 'BUTTON') return;
+      const t = e.touches[0];
+      dragging = true;
+      touchHasMoved = false;
+      touchStartCX = t.clientX;
+      touchStartCY = t.clientY;
+      offX = t.clientX - (node.x * zoom + panX);
+      offY = t.clientY - (node.y * zoom + panY);
+      card.style.zIndex = 20;
+      e.stopPropagation(); // prevent canvas pan from starting
+    });
+    window.addEventListener('touchmove', (e) => {
+      if (!dragging || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      if (!touchHasMoved && (Math.abs(t.clientX - touchStartCX) > 5 || Math.abs(t.clientY - touchStartCY) > 5)) {
+        touchHasMoved = true;
+      }
+      node.x = (t.clientX - offX - panX) / zoom;
+      node.y = (t.clientY - offY - panY) / zoom;
+      card.style.left = (node.x * zoom + panX) + 'px';
+      card.style.top  = (node.y * zoom + panY) + 'px';
+      drawConnections();
+      e.preventDefault();
+    }, { passive: false });
+    window.addEventListener('touchend', (e) => {
+      if (!dragging) return;
+      dragging = false;
+      card.style.zIndex = 10;
+      if (!touchHasMoved) {
+        handleSelect(node.id, null);
+        e.preventDefault(); // prevent synthetic mousedown/click
+      }
+    });
+  }
+
+  function handleSelect(id, e) {
+    if (e && e.target.tagName === 'CANVAS') return;
+    const idx = selectedIds.indexOf(id);
+    if (e && e.ctrlKey) {
+      if (idx >= 0) selectedIds.splice(idx, 1);
+      else selectedIds.push(id);
+    } else {
+      if (idx >= 0 && selectedIds.length === 1) selectedIds = [];
+      else selectedIds = [id];
+    }
+    updateSelectionUI();
+  }
+
+  function updateSelectionUI() {
+    for (const n of nodes) {
+      if (n.el) n.el.classList.toggle('selected', selectedIds.includes(n.id));
+    }
+  }
+
+  // =============================================
+  // Draw Connections
+  // =============================================
+  function drawConnections() {
+    connCtx.clearRect(0, 0, connCanvas.width, connCanvas.height);
+    connCtx.strokeStyle = '#555';
+    connCtx.lineWidth = 2;
+    connCtx.fillStyle = '#555';
+
+    for (const node of nodes) {
+      if (node.parentId === null) continue;
+      const parent = findNode(node.parentId);
+      if (!parent || !parent.el || !node.el) continue;
+
+      const pr = parent.el.getBoundingClientRect();
+      const cr = node.el.getBoundingClientRect();
+      const ar = canvasArea.getBoundingClientRect();
+
+      const px = pr.left + pr.width / 2 - ar.left;
+      const py = pr.top + pr.height - ar.top;
+      const cx = cr.left + cr.width / 2 - ar.left;
+      const cy = cr.top - ar.top;
+
+      connCtx.beginPath();
+      connCtx.moveTo(px, py);
+      connCtx.lineTo(cx, cy);
+      connCtx.stroke();
+
+      const angle = Math.atan2(cy - py, cx - px);
+      const arrLen = 10;
+      connCtx.beginPath();
+      connCtx.moveTo(cx, cy);
+      connCtx.lineTo(cx - arrLen * Math.cos(angle - 0.4), cy - arrLen * Math.sin(angle - 0.4));
+      connCtx.lineTo(cx - arrLen * Math.cos(angle + 0.4), cy - arrLen * Math.sin(angle + 0.4));
+      connCtx.closePath();
+      connCtx.fill();
+
+      // Draw move value label on edge
+      if (parent.score !== null && node.score !== null) {
+        const value = Math.abs(parent.score - node.score);
+        const label = Number.isInteger(value) ? value.toString() : value.toFixed(2);
+        const midX = (px + cx) / 2;
+        const midY = (py + cy) / 2;
+        const fontSize = Math.max(11, Math.min(16, 14 * zoom));
+        connCtx.font = 'bold ' + fontSize + 'px sans-serif';
+        const textW = connCtx.measureText(label).width;
+        const padH = 4, padV = 2;
+        connCtx.fillStyle = 'rgba(255,255,255,0.85)';
+        connCtx.fillRect(midX - textW / 2 - padH, midY - fontSize / 2 - padV, textW + padH * 2, fontSize + padV * 2);
+        connCtx.strokeStyle = '#c8a030';
+        connCtx.lineWidth = 1;
+        connCtx.strokeRect(midX - textW / 2 - padH, midY - fontSize / 2 - padV, textW + padH * 2, fontSize + padV * 2);
+        connCtx.fillStyle = '#b8860b';
+        connCtx.textAlign = 'center';
+        connCtx.textBaseline = 'middle';
+        connCtx.fillText(label, midX, midY);
+        // Reset styles for next iteration
+        connCtx.strokeStyle = '#555';
+        connCtx.lineWidth = 2;
+        connCtx.fillStyle = '#555';
+      }
+    }
+  }
+
+  // =============================================
+  // Calculation
+  // =============================================
+  function calculate() {
+    const visited = new Set();
+    const order = [];
+    function dfs(id) {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const node = findNode(id);
+      if (!node) return;
+      for (const cid of node.childIds) dfs(cid);
+      order.push(id);
+    }
+    for (const n of nodes) dfs(n.id);
+
+    for (const id of order) {
+      const node = findNode(id);
+      if (!node) continue;
+      if (node.childIds.length === 0) continue;
+      const childScores = node.childIds.map(cid => {
+        const c = findNode(cid);
+        return c ? c.score : null;
+      }).filter(s => s !== null);
+      if (childScores.length > 0) {
+        node.score = childScores.reduce((a, b) => a + b, 0) / childScores.length;
+      } else {
+        node.score = null;
+      }
+      updateNodeScoreUI(node);
+    }
+    drawConnections();
+  }
+
+  // =============================================
+  // Initial glow hint on "ノード追加" button
+  // =============================================
+  const btnAdd = document.getElementById('btn-add');
+  btnAdd.classList.add('glow-hint');
+  function stopGlowHint() {
+    btnAdd.classList.remove('glow-hint');
+  }
+  document.addEventListener('click', function onBtn(e) {
+    if (e.target.closest('button')) {
+      stopGlowHint();
+      document.removeEventListener('click', onBtn);
+    }
+  });
+
+  // =============================================
+  // Toolbar handlers
+  // =============================================
+  btnAdd.addEventListener('click', () => {
+    const bs = parseInt(document.getElementById('board-size').value) || 9;
+    const clamped = Math.max(3, Math.min(19, bs));
+    const viewCenterX = (canvasArea.clientWidth / 2 - panX) / zoom;
+    const viewCenterY = (canvasArea.clientHeight / 2 - panY) / zoom;
+    const x = viewCenterX - 100 + Math.random() * 200;
+    const y = viewCenterY - 80 + Math.random() * 160;
+    createNode(x, y, clamped);
+  });
+
+  document.getElementById('btn-connect').addEventListener('click', () => {
+    if (selectedIds.length !== 2) {
+      alert('接続するには2つのノードを選択してください (Ctrl+クリック)');
+      return;
+    }
+    connectNodes(selectedIds[0], selectedIds[1]);
+    selectedIds = [];
+    updateSelectionUI();
+  });
+
+  document.getElementById('btn-calc').addEventListener('click', calculate);
+
+  // --- Delete key to remove selected nodes ---
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && selectedIds.length > 0) {
+      // Don't delete if user is typing in an input
+      if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) return;
+      for (const id of [...selectedIds]) removeNode(id);
+      drawConnections();
+    }
+  });
+
+  // =============================================
+  // Sidebar handlers
+  // =============================================
+  document.getElementById('btn-new-tree').addEventListener('click', () => {
+    const title = prompt('新しいツリーのタイトル:', 'Untitled');
+    if (title === null) return; // cancelled
+    addNewTree(title.trim() || 'Untitled');
+  });
+
+  document.getElementById('btn-export').addEventListener('click', exportData);
+
+  const importInput = document.getElementById('import-input');
+  document.getElementById('btn-import').addEventListener('click', () => {
+    importInput.click();
+  });
+  importInput.addEventListener('change', () => {
+    if (importInput.files.length > 0) {
+      importData(importInput.files[0]);
+      importInput.value = '';
+    }
+  });
+
+  // =============================================
+  // Drag & Drop Import (window-wide)
+  // =============================================
+  const dropOverlay = document.createElement('div');
+  dropOverlay.id = 'drop-overlay';
+  dropOverlay.innerHTML = '<span class="drop-icon">📂</span>JSONファイルをドロップしてインポート';
+  document.body.appendChild(dropOverlay);
+
+  let dragEnterCount = 0;
+
+  window.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragEnterCount++;
+    dropOverlay.classList.add('active');
+  });
+
+  window.addEventListener('dragleave', () => {
+    dragEnterCount--;
+    if (dragEnterCount <= 0) {
+      dragEnterCount = 0;
+      dropOverlay.classList.remove('active');
+    }
+  });
+
+  window.addEventListener('dragover', (e) => {
+    if (e.dataTransfer.types.includes('Files')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+
+  window.addEventListener('drop', (e) => {
+    dragEnterCount = 0;
+    dropOverlay.classList.remove('active');
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(
+      f => f.type === 'application/json' || f.name.endsWith('.json')
+    );
+    if (files.length > 0) {
+      importData(files[0]);
+    } else {
+      alert('JSONファイルをドロップしてください');
+    }
+  });
+
+  // =============================================
+  // Server auto-save
+  // =============================================
+  let serverLastJson = null;
+  const btnAutosave = document.getElementById('btn-autosave');
+
+  async function doServerSave() {
+    saveActiveTree();
+    const json = JSON.stringify({
+      version: 1,
+      nextTreeId,
+      trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+      activeTreeId,
+    });
+    if (json === serverLastJson) return;
+    try {
+      const res = await fetch('/api/state', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: json,
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      serverLastJson = json;
+      lastSavedJson = json;
+      btnAutosave.textContent = '保存済 ✓';
+      btnAutosave.classList.add('active');
+      setTimeout(() => {
+        btnAutosave.textContent = '自動保存';
+        btnAutosave.classList.remove('active');
+      }, 1500);
+    } catch (err) {
+      console.error('Server save failed:', err);
+      btnAutosave.textContent = '保存失敗!';
+      setTimeout(() => { btnAutosave.textContent = '自動保存'; }, 3000);
+    }
+  }
+
+  // Manual save on button click
+  btnAutosave.addEventListener('click', () => doServerSave());
+
+  // Auto-save every 3 seconds
+  setInterval(doServerSave, 3000);
+
+  // =============================================
+  // Sidebar toggle
+  // =============================================
+  const btnSidebarToggle = document.getElementById('btn-sidebar-toggle');
+  const sidebarEl = document.getElementById('sidebar');
+
+  // Auto-collapse on small screens
+  if (window.innerWidth < 640) {
+    sidebarEl.classList.add('collapsed');
+    btnSidebarToggle.textContent = '▶';
+  }
+
+  btnSidebarToggle.addEventListener('click', () => {
+    const collapsed = sidebarEl.classList.toggle('collapsed');
+    btnSidebarToggle.textContent = collapsed ? '▶' : '◀';
+  });
+
+  // Resize connection canvas after sidebar transition completes
+  sidebarEl.addEventListener('transitionend', resizeConnCanvas);
+
+  // =============================================
+  // Pan (background drag) + deselect
+  // =============================================
+  {
+    let panning = false;
+    let panStartX, panStartY, panStartPanX, panStartPanY;
+    let moved = false;
+
+    canvasArea.addEventListener('mousedown', (e) => {
+      if (e.target !== canvasArea && e.target !== connCanvas) return;
+      panning = true;
+      moved = false;
+      panStartX = e.clientX;
+      panStartY = e.clientY;
+      panStartPanX = panX;
+      panStartPanY = panY;
+      canvasArea.classList.add('panning');
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!panning) return;
+      const dx = e.clientX - panStartX;
+      const dy = e.clientY - panStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      panX = panStartPanX + dx;
+      panY = panStartPanY + dy;
+      repositionAll();
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!panning) return;
+      panning = false;
+      canvasArea.classList.remove('panning');
+      if (!moved) {
+        selectedIds = [];
+        updateSelectionUI();
+      }
+    });
+
+    // --- Touch pan + pinch zoom ---
+    let pinching = false;
+    let pinchStartDist, pinchStartZoom, pinchStartMidX, pinchStartMidY, pinchStartPanX, pinchStartPanY;
+
+    canvasArea.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1 && (e.target === canvasArea || e.target === connCanvas)) {
+        panning = true;
+        moved = false;
+        const t = e.touches[0];
+        panStartX = t.clientX; panStartY = t.clientY;
+        panStartPanX = panX;   panStartPanY = panY;
+        canvasArea.classList.add('panning');
+      } else if (e.touches.length === 2) {
+        panning = false;
+        canvasArea.classList.remove('panning');
+        pinching = true;
+        const t0 = e.touches[0], t1 = e.touches[1];
+        pinchStartDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        pinchStartZoom = zoom;
+        const ar = canvasArea.getBoundingClientRect();
+        pinchStartMidX = (t0.clientX + t1.clientX) / 2 - ar.left;
+        pinchStartMidY = (t0.clientY + t1.clientY) / 2 - ar.top;
+        pinchStartPanX = panX; pinchStartPanY = panY;
+      }
+    });
+
+    canvasArea.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (pinching && e.touches.length === 2) {
+        const t0 = e.touches[0], t1 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+        const ar   = canvasArea.getBoundingClientRect();
+        const midX = (t0.clientX + t1.clientX) / 2 - ar.left;
+        const midY = (t0.clientY + t1.clientY) / 2 - ar.top;
+        zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinchStartZoom * dist / pinchStartDist));
+        // Zoom around initial pinch midpoint
+        const wx = (pinchStartMidX - pinchStartPanX) / pinchStartZoom;
+        const wy = (pinchStartMidY - pinchStartPanY) / pinchStartZoom;
+        panX = midX - wx * zoom;
+        panY = midY - wy * zoom;
+        repositionAll();
+      } else if (panning && e.touches.length === 1) {
+        const t = e.touches[0];
+        const dx = t.clientX - panStartX;
+        const dy = t.clientY - panStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+        panX = panStartPanX + dx;
+        panY = panStartPanY + dy;
+        repositionAll();
+      }
+    }, { passive: false });
+
+    canvasArea.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinching = false;
+      if (e.touches.length === 0) {
+        if (panning) {
+          panning = false;
+          canvasArea.classList.remove('panning');
+          if (!moved) { selectedIds = []; updateSelectionUI(); }
+        }
+      } else if (e.touches.length === 1 && !panning) {
+        // Lifted one finger from pinch → transition to single-finger pan
+        pinching = false;
+        panning = true;
+        moved = true; // prevent deselect on finger lift
+        const t = e.touches[0];
+        panStartX = t.clientX; panStartY = t.clientY;
+        panStartPanX = panX;   panStartPanY = panY;
+      }
+    });
+  }
+
+  // =============================================
+  // Zoom (mouse wheel)
+  // =============================================
+  canvasArea.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const ar = canvasArea.getBoundingClientRect();
+    // Mouse position relative to canvas-area
+    const mx = e.clientX - ar.left;
+    const my = e.clientY - ar.top;
+    // World position under the cursor before zoom
+    const wx = (mx - panX) / zoom;
+    const wy = (my - panY) / zoom;
+    // Apply zoom
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor));
+    // Adjust pan so that the world point under cursor stays fixed
+    panX = mx - wx * zoom;
+    panY = my - wy * zoom;
+    repositionAll();
+  }, { passive: false });
+
+  // =============================================
+  // Warn on unsaved changes
+  // =============================================
+  window.addEventListener('beforeunload', (e) => {
+    if (getSerializedData() !== lastSavedJson) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+  });
+
+  // =============================================
+  // Initialize from server
+  // =============================================
+  (async function initFromServer() {
+    try {
+      const res = await fetch('/api/state');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      if (data.trees && data.trees.length > 0) {
+        clearCanvas();
+        trees = data.trees.map(t => ({
+          id: t.id,
+          title: t.title || 'Untitled',
+          data: t.data,
+        }));
+        nextTreeId = data.nextTreeId || (Math.max(...trees.map(t => t.id)) + 1);
+        const targetId = data.activeTreeId || trees[0].id;
+        activeTreeId = null;
+        loadTree(targetId);
+        serverLastJson = JSON.stringify({
+          version: 1,
+          nextTreeId,
+          trees: trees.map(t => ({ id: t.id, title: t.title, data: t.data })),
+          activeTreeId,
+        });
+        lastSavedJson = serverLastJson;
+        return;
+      }
+    } catch (err) {
+      console.error('Init from server failed:', err);
+    }
+    // Fallback: start with a blank tree
+    addNewTree('Untitled');
+    lastSavedJson = getSerializedData();
+  })();
+})();
+</script>
+</body>
+</html>
