@@ -789,14 +789,16 @@ body {
     delNodeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeNode(node.id); drawConnections(); });
     card.appendChild(header);
 
-    // Board canvas
+    // Board canvas (drawn at ZOOM_MAX resolution so it stays sharp when zoomed in)
     const cellSize = node.boardSize <= 9 ? 24 : (node.boardSize <= 13 ? 18 : 14);
     const padding = cellSize;
     const canvasSize = cellSize * (node.boardSize - 1) + padding * 2;
     const bc = document.createElement('canvas');
     bc.className = 'node-board-canvas';
-    bc.width = canvasSize;
-    bc.height = canvasSize;
+    bc.width = canvasSize * ZOOM_MAX;
+    bc.height = canvasSize * ZOOM_MAX;
+    bc.style.width = canvasSize + 'px';
+    bc.style.height = canvasSize + 'px';
     card.appendChild(bc);
     node.boardCanvas = bc;
 
@@ -902,14 +904,16 @@ body {
     const bc = node.boardCanvas;
     const ctx = bc.getContext('2d');
     const bs = node.boardSize;
-    const cellSize = bs <= 9 ? 24 : (bs <= 13 ? 18 : 14);
-    const padding = cellSize;
+    const cellBase = bs <= 9 ? 24 : (bs <= 13 ? 18 : 14);
+    const s = bc.width / (cellBase * (bs - 1) + cellBase * 2);
+    const cellSize = cellBase * s;
+    const padding = cellBase * s;
 
     ctx.fillStyle = '#e8c36a';
     ctx.fillRect(0, 0, bc.width, bc.height);
 
     ctx.strokeStyle = '#333';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = s;
     for (let i = 0; i < bs; i++) {
       const p = padding + i * cellSize;
       ctx.beginPath(); ctx.moveTo(padding, p); ctx.lineTo(padding + (bs - 1) * cellSize, p); ctx.stroke();
@@ -920,7 +924,7 @@ body {
     for (const [sr, sc] of starPoints) {
       ctx.fillStyle = '#333';
       ctx.beginPath();
-      ctx.arc(padding + sc * cellSize, padding + sr * cellSize, 3, 0, Math.PI * 2);
+      ctx.arc(padding + sc * cellSize, padding + sr * cellSize, 3 * s, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -936,7 +940,7 @@ body {
         ctx.fillStyle = v === 1 ? '#111' : '#eee';
         ctx.fill();
         ctx.strokeStyle = v === 1 ? '#000' : '#aaa';
-        ctx.lineWidth = 1;
+        ctx.lineWidth = s;
         ctx.stroke();
       }
     }
