@@ -12,12 +12,20 @@ import http.server
 import json
 import os
 import re
+import shutil
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 BASE_DIR = Path(__file__).parent.resolve()
 DB_PATH = BASE_DIR / 'goyose.db'
+BACKUP_DIR = BASE_DIR / 'backups'
+BACKUP_KEEP = 30  # 直近この件数のバックアップを保持する
+
+
+class StateError(Exception):
+    """クライアントの状態が安全に保存できないときに送出する。"""
 
 
 # ── Database ────────────────────────────────────────────────────────────────
@@ -85,6 +93,25 @@ def db_get_state():
     }
 
 
+def backup_db(reason):
+    """破壊的な書き込みの前に goyose.db をタイムスタンプ付きでコピーする。"""
+    if not DB_PATH.exists():
+        return
+    BACKUP_DIR.mkdir(exist_ok=True)
+    stamp = time.strftime('%Y%m%d-%H%M%S')
+    dest = BACKUP_DIR / f'goyose-{stamp}-{reason}.db'
+    # 同一秒に複数回呼ばれても上書きしないよう連番を付ける
+    n = 1
+    while dest.exists():
+        dest = BACKUP_DIR / f'goyose-{stamp}-{reason}-{n}.db'
+        n += 1
+    shutil.copy2(DB_PATH, dest)
+    # 古いバックアップを間引く
+    backups = sorted(BACKUP_DIR.glob('goyose-*.db'))
+    for old in backups[:-BACKUP_KEEP]:
+        old.unlink()
+
+
 def db_put_state(payload):
     trees = payload.get('trees', [])
     next_tree_id = payload.get('nextTreeId', 1)
@@ -96,8 +123,19 @@ def db_put_state(payload):
         for row in conn.execute('SELECT tree_id FROM trees').fetchall()
     }
     new_ids = {t['id'] for t in trees}
+    to_delete = existing_ids - new_ids
 
-    for old_id in existing_ids - new_ids:
+    # 安全弁：既存ツリーがあるのに空の状態を送ってきた場合は、事故とみなして拒否する。
+    # （初期ロード前/ロード失敗時の空PUTでDBが全消しされるのを防ぐ）
+    if not new_ids and existing_ids:
+        conn.close()
+        raise StateError('refusing to clear all trees (empty payload)')
+
+    # 削除が発生する保存の前にはバックアップを取る。
+    if to_delete:
+        backup_db('predelete')
+
+    for old_id in to_delete:
         conn.execute('DELETE FROM trees WHERE tree_id = ?', (old_id,))
 
     for i, tree in enumerate(trees):
@@ -183,7 +221,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if payload is None:
                 self.send_json(400, {'error': 'invalid JSON'})
                 return
-            db_put_state(payload)
+            try:
+                db_put_state(payload)
+            except StateError as e:
+                self.send_json(409, {'error': str(e)})
+                return
             self.send_json(200, {'ok': True})
         else:
             self.send_error(404)

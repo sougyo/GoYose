@@ -1276,9 +1276,14 @@ body {
   // Server auto-save
   // =============================================
   let serverLastJson = null;
+  // 初期ロードが正常に完了するまで自動保存を禁止する（空状態でDBを上書きしないため）
+  let serverInitialized = false;
   const btnAutosave = document.getElementById('btn-autosave');
 
   async function doServerSave() {
+    // 初期ロードが完了していない間は保存しない。
+    // （ロード前/ロード失敗時の空状態をPUTするとサーバー側で全ツリーが削除されてしまう）
+    if (!serverInitialized) return;
     saveActiveTree();
     const json = JSON.stringify({
       version: 1,
@@ -1500,14 +1505,23 @@ body {
           activeTreeId,
         });
         lastSavedJson = serverLastJson;
-        return;
+      } else {
+        // サーバーは正常応答だが中身が空（初回起動など）→ 新規ツリーで開始。
+        // 保存しても失うデータが無いので自動保存を許可する。
+        addNewTree('Untitled');
+        lastSavedJson = getSerializedData();
       }
+      // ここまで来たらロード成功。自動保存を解禁する。
+      serverInitialized = true;
     } catch (err) {
+      // ロード失敗：サーバーに既存データがあるかもしれないので、
+      // 空状態で上書きしないよう自動保存を禁止したまま操作だけ可能にする。
       console.error('Init from server failed:', err);
+      addNewTree('Untitled');
+      lastSavedJson = getSerializedData();
+      btnAutosave.textContent = '読込失敗(保存停止)';
+      btnAutosave.classList.add('error');
     }
-    // Fallback: start with a blank tree
-    addNewTree('Untitled');
-    lastSavedJson = getSerializedData();
   })();
 })();
 </script>
